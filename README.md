@@ -2,7 +2,9 @@
 
 一个面向闲置 Android 手机的 AIDA64 RemoteSensor 专用全屏显示器。它按工作日、周末和中国大陆法定节假日自动控制面板常亮/息屏。
 
-![曜屏 AIDA64 面板预览](AIDA64-LCD-1200x2608-Chronograph-preview.png)
+<p align="center">
+  <img src="AIDA64-LCD-1200x2608-Chronograph-preview.png" alt="曜屏 AIDA64 面板预览" width="320">
+</p>
 
 ## 下载
 
