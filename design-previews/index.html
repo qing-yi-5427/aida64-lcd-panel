@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AIDA64 LCD concepts — clock first</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; min-height: 100%; overflow-x: hidden; scrollbar-width: none; }
+    html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; }
+    body { background: #090a0b; }
+    .screen { display: none; position: relative; width: 1200px; height: 2608px; overflow: hidden; font-variant-numeric: tabular-nums lining-nums; }
+    .screen.active { display: grid; }
+    .caps { text-transform: uppercase; letter-spacing: .16em; }
+    .unit { font-size: .42em; letter-spacing: .05em; opacity: .65; }
+    .bar { position: relative; overflow: hidden; }
+    .bar::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--fill); background: var(--accent); }
+
+    /* 01 — Chronograph */
+    .d1 {
+      --ink: #f1eee7; --muted: #7f8384; --line: #303334; --amber: #ffb247; --blue: #73a7ff;
+      grid-template-rows: 430px 300px 1220px 478px; gap: 24px;
+      padding: 54px 58px; color: var(--ink); font-family: "Bahnschrift", sans-serif;
+      background: radial-gradient(circle at 86% 0%, #2a2115 0, transparent 28%), linear-gradient(160deg,#141719 0%,#0b0d0e 68%);
+    }
+    .d1::before { content:""; position:absolute; inset:0; opacity:.13; background: repeating-linear-gradient(90deg,transparent 0 119px,rgba(255,255,255,.05) 120px); }
+    .d1 > * { position:relative; z-index:1; }
+    .d1 .clock { display:grid; grid-template-columns:1fr 300px; border-bottom:1px solid var(--line); align-items:end; padding: 10px 8px 34px; }
+    .d1 .clock small { display:block; margin-bottom:20px; color:#9a9e9f; font-size:29px; }
+    .d1 .time { font-size:220px; font-weight:300; line-height:.78; letter-spacing:-.075em; }
+    .d1 .date { text-align:right; padding-bottom:8px; }
+    .d1 .day { color:var(--amber); font-size:38px; }
+    .d1 .full-date { margin-top:20px; color:#c1beb7; font-size:31px; }
+    .d1 .power { display:grid; grid-template-columns: 144px 1fr 1fr; border:1px solid var(--line); border-radius:24px; overflow:hidden; background:rgba(11,13,14,.45); }
+    .d1 .power-title { display:flex; align-items:center; justify-content:center; padding:26px; border-right:1px solid var(--line); color:#9a9e9f; font-size:25px; writing-mode:vertical-rl; transform:rotate(180deg); }
+    .d1 .power-cell { --accent:var(--amber); position:relative; display:flex; flex-direction:column; justify-content:center; padding:29px 42px 26px; border-right:1px solid var(--line); }
+    .d1 .power-cell.gpu-power { --accent:var(--blue); }
+    .d1 .power-cell::before { content:""; position:absolute; left:42px; top:0; width:92px; height:5px; background:var(--accent); }
+    .d1 .power-cell:last-child { border-right:0; }
+    .d1 .power-cell label { color:var(--accent); font-size:29px; }
+    .d1 .watts { display:grid; grid-template-columns:250px 52px; justify-content:center; align-items:baseline; column-gap:14px; margin-top:16px; font-size:118px; font-weight:300; line-height:.95; letter-spacing:-.065em; }
+    .d1 .power-number { text-align:right; }
+    .d1 .cores { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+    .d1 .core-card { --accent:var(--amber); display:grid; grid-template-rows:110px 360px 1fr; border:1px solid var(--line); border-radius:26px; overflow:hidden; background:rgba(11,13,14,.65); }
+    .d1 .core-card.gpu { --accent:var(--blue); }
+    .d1 .core-head { display:flex; align-items:center; justify-content:space-between; padding:0 34px; border-bottom:1px solid var(--line); }
+    .d1 .core-head strong { color:var(--accent); font-size:42px; letter-spacing:.16em; }
+    .d1 .core-head span { color:#929697; font-size:25px; }
+    .d1 .load { display:grid; grid-template-columns:1fr 150px; align-items:center; padding:36px; border-bottom:1px solid var(--line); }
+    .d1 .load label { display:block; color:#9a9e9f; font-size:28px; }
+    .d1 .load strong { display:block; margin-top:14px; transform:translateX(28px); font-size:154px; font-weight:300; line-height:.9; letter-spacing:-.06em; }
+    .d1 .load-ring { width:132px; height:132px; border-radius:50%; background:conic-gradient(var(--accent) 0 var(--pct),#202425 var(--pct) 100%); position:relative; }
+    .d1 .load-ring::after { content:""; position:absolute; inset:15px; border-radius:50%; background:#101314; }
+    .d1 .stats { display:grid; grid-template-rows:repeat(3,1fr); padding:0 35px; }
+    .d1 .stat { display:grid; grid-template-columns:130px 1fr; align-items:center; border-bottom:1px solid var(--line); }
+    .d1 .stat:last-child { border-bottom:0; }
+    .d1 .stat label { color:#9a9e9f; font-size:28px; }
+    .d1 .stat strong { text-align:right; font-size:72px; font-weight:400; }
+    .d1 .stat .unit { font-size:.40em; }
+    .d1 .memory { display:grid; grid-template-columns:210px 1fr 1fr; border:1px solid var(--line); border-radius:24px; overflow:hidden; }
+    .d1 .memory-title { display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; transform:rotate(180deg); border-right:1px solid var(--line); color:#9a9e9f; font-size:27px; }
+    .d1 .mem-cell { padding:38px 42px; border-right:1px solid var(--line); }
+    .d1 .mem-cell:last-child { border-right:0; }
+    .d1 .mem-top { display:flex; justify-content:space-between; align-items:baseline; }
+    .d1 .mem-top label { color:#9a9e9f; font-size:29px; }
+    .d1 .mem-top strong { color:var(--accent); font-size:46px; }
+    .d1 .mem-value { margin-top:42px; font-size:86px; font-weight:300; }
+    .d1 .bar { height:18px; margin-top:58px; background:#242728; --accent:var(--amber); }
+    .d1 .vram .bar { --accent:var(--blue); }
+    .d1 .mem-foot { display:flex; justify-content:space-between; margin-top:20px; color:#929697; font-size:24px; }
+    .d1 .unit { font-size:.46em; opacity:.74; }
+
+    /* Background-only export: values are rendered live by AIDA64. */
+    .d1.background-mode .time,
+    .d1.background-mode .date .day,
+    .d1.background-mode .date .full-date,
+    .d1.background-mode .load-ring,
+    .d1.background-mode .mem-top strong,
+    .d1.background-mode .mem-foot span:last-child { visibility:hidden; }
+    .d1.background-mode .load strong,
+    .d1.background-mode .stat strong,
+    .d1.background-mode .mem-value { color:transparent; }
+    .d1.background-mode .load .unit,
+    .d1.background-mode .stat .unit,
+    .d1.background-mode .mem-value .unit { color:var(--ink); }
+    .d1.background-mode .power-number { visibility:hidden; }
+    .d1.background-mode .bar::after { display:none; }
+
+    /* 02 — Time Edition */
+    .d2 {
+      --paper:#f0ede4; --ink:#171714; --muted:#77736b; --rule:#bbb5a9; --red:#d64b32; --blue:#2f5fbd;
+      grid-template-rows:500px 320px 1190px 418px; gap:24px;
+      padding:54px 62px; color:var(--ink); font-family:"Bahnschrift",sans-serif; background:var(--paper);
+    }
+    .d2::after { content:""; position:absolute; inset:0; opacity:.18; pointer-events:none; background-image:radial-gradient(#171714 .65px,transparent .65px); background-size:11px 11px; }
+    .d2 > * { position:relative; z-index:1; }
+    .d2 .clock { display:grid; grid-template-columns:1fr 220px; align-items:end; border-top:7px solid var(--ink); border-bottom:2px solid var(--ink); padding:40px 0 34px; }
+    .d2 .edition { color:var(--muted); font-size:23px; margin-bottom:34px; }
+    .d2 .time { font-family:Georgia,serif; font-size:218px; line-height:.74; letter-spacing:-.075em; }
+    .d2 .date { height:100%; display:flex; flex-direction:column; justify-content:flex-end; border-left:9px solid var(--red); padding-left:28px; }
+    .d2 .date strong { font-family:Georgia,serif; font-size:50px; font-weight:400; }
+    .d2 .date span { margin-top:19px; color:var(--muted); font-size:23px; line-height:1.5; }
+    .d2 .power { display:grid; grid-template-columns:190px 1fr 1fr; background:var(--ink); color:var(--paper); }
+    .d2 .power-title { padding:31px; writing-mode:vertical-rl; transform:rotate(180deg); text-align:center; color:#aaa69e; font-size:22px; }
+    .d2 .power-cell { padding:34px 42px; border-left:1px solid #4a4944; }
+    .d2 .power-cell label { color:#aaa69e; font-size:21px; }
+    .d2 .power-cell strong { display:block; margin-top:25px; font-family:Georgia,serif; font-size:101px; font-weight:400; letter-spacing:-.05em; }
+    .d2 .power-cell strong small { font-family:"Bahnschrift"; font-size:27px; color:var(--red); }
+    .d2 .power-cell:last-child strong small { color:#7fa4ef; }
+    .d2 .cores { display:grid; grid-template-columns:1fr 1fr; border-top:1px solid var(--rule); border-bottom:1px solid var(--rule); }
+    .d2 .core { padding:36px 42px; }
+    .d2 .core + .core { border-left:1px solid var(--rule); }
+    .d2 .core-index { color:var(--accent); font-size:22px; font-weight:700; }
+    .d2 .core h2 { margin:20px 0 0; font-family:Georgia,serif; font-size:68px; font-weight:400; }
+    .d2 .load { margin-top:50px; padding:34px 0 44px; border-top:1px solid var(--rule); border-bottom:1px solid var(--rule); }
+    .d2 .load label { color:var(--muted); font-size:20px; }
+    .d2 .load strong { display:block; margin-top:12px; font-family:Georgia,serif; font-size:173px; font-weight:400; line-height:.9; letter-spacing:-.06em; }
+    .d2 .load strong small { color:var(--accent); font-family:"Bahnschrift"; font-size:36px; }
+    .d2 .rows { margin-top:32px; }
+    .d2 .row { display:grid; grid-template-columns:120px 1fr; align-items:center; min-height:120px; border-bottom:1px solid var(--rule); }
+    .d2 .row label { color:var(--muted); font-size:20px; }
+    .d2 .row strong { text-align:right; font-size:48px; font-weight:500; }
+    .d2 .memory { display:grid; grid-template-columns:1fr 1fr; gap:44px; padding-top:34px; }
+    .d2 .mem-cell { border-top:4px solid var(--ink); padding:26px 0; }
+    .d2 .mem-head { display:flex; justify-content:space-between; color:var(--muted); font-size:20px; }
+    .d2 .mem-value { display:flex; align-items:flex-end; justify-content:space-between; margin-top:34px; }
+    .d2 .mem-value strong { font-family:Georgia,serif; font-size:86px; font-weight:400; }
+    .d2 .mem-value span { margin-bottom:15px; color:var(--accent); font-size:25px; }
+    .d2 .bar { height:15px; margin-top:35px; background:#d5d0c5; --accent:var(--red); }
+
+    /* 03 — Command Time */
+    .d3 {
+      --ink:#edf0e5; --green:#aaff36; --muted:#737b6c; --line:#485042;
+      grid-template-rows:460px 300px 1260px 408px; gap:24px;
+      padding:54px 60px; color:var(--ink); font-family:"Bahnschrift Condensed","Bahnschrift",sans-serif; background:#080a07;
+    }
+    .d3::before { content:""; position:absolute; inset:0; opacity:.42; background-image:linear-gradient(rgba(170,255,54,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(170,255,54,.045) 1px,transparent 1px); background-size:60px 60px; }
+    .d3 > * { position:relative; z-index:1; }
+    .d3 .clock { display:grid; grid-template-columns:1fr 260px; border:2px solid var(--green); }
+    .d3 .time-wrap { display:flex; flex-direction:column; justify-content:center; padding:32px 42px; }
+    .d3 .time-wrap label { color:var(--green); font-size:22px; }
+    .d3 .time { margin-top:30px; font-size:205px; line-height:.73; letter-spacing:-.055em; }
+    .d3 .date { border-left:2px solid var(--green); display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; }
+    .d3 .date strong { color:var(--green); font-size:75px; font-weight:400; line-height:1; }
+    .d3 .date span { margin-top:22px; color:var(--muted); font-size:22px; line-height:1.5; }
+    .d3 .power { display:grid; grid-template-columns:220px 1fr 1fr; border:1px solid var(--line); }
+    .d3 .power-title { padding:32px; color:var(--muted); font-size:21px; }
+    .d3 .power-title strong { display:block; margin-top:28px; color:var(--green); font-size:37px; }
+    .d3 .power-cell { border-left:1px solid var(--line); padding:32px 38px; }
+    .d3 .power-cell label { color:var(--muted); font-size:20px; }
+    .d3 .power-cell strong { display:block; margin-top:20px; font-size:96px; font-weight:400; line-height:1; }
+    .d3 .power-cell strong small { font-size:25px; color:var(--green); }
+    .d3 .cores { display:grid; grid-template-rows:1fr 1fr; border:1px solid var(--line); }
+    .d3 .core { display:grid; grid-template-columns:128px 260px 1fr; }
+    .d3 .core + .core { border-top:1px solid var(--line); }
+    .d3 .core-name { display:flex; justify-content:center; align-items:center; writing-mode:vertical-rl; transform:rotate(180deg); border-right:1px solid var(--line); color:var(--green); font-size:46px; letter-spacing:.16em; }
+    .d3 .load { display:flex; flex-direction:column; justify-content:center; padding:30px; border-right:1px solid var(--line); }
+    .d3 .load label { color:var(--muted); font-size:20px; }
+    .d3 .load strong { margin-top:22px; font-size:145px; font-weight:400; line-height:.9; }
+    .d3 .load strong small { font-size:30px; color:var(--green); }
+    .d3 .load .bar { height:13px; margin-top:40px; background:#252a22; --accent:var(--green); }
+    .d3 .stats { display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:1px; background:var(--line); }
+    .d3 .stat { display:flex; flex-direction:column; justify-content:center; padding:28px 36px; background:#0a0d09; }
+    .d3 .stat label { color:var(--muted); font-size:19px; }
+    .d3 .stat strong { margin-top:16px; font-size:49px; font-weight:400; }
+    .d3 .memory { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+    .d3 .mem { border:1px solid var(--line); padding:32px 40px; }
+    .d3 .mem-head { display:flex; justify-content:space-between; color:var(--muted); font-size:20px; }
+    .d3 .mem-head strong { color:var(--green); font-size:27px; }
+    .d3 .mem-value { margin-top:48px; font-size:70px; }
+    .d3 .mem-value small { color:var(--green); font-size:24px; }
+    .d3 .bar { height:15px; margin-top:43px; background:#252a22; --accent:var(--green); }
+
+    /* 04 — Orbit Clock */
+    .d4 {
+      --ink:#eaf7fd; --cyan:#48dcff; --violet:#8098ff; --muted:#668394; --line:#244250;
+      grid-template-rows:460px 280px 1300px 388px; gap:24px;
+      padding:54px 58px; color:var(--ink); font-family:"Bahnschrift",sans-serif;
+      background:radial-gradient(circle at 15% 0%,rgba(72,220,255,.15),transparent 28%),radial-gradient(circle at 92% 60%,rgba(128,152,255,.12),transparent 30%),#07141d;
+    }
+    .d4 .clock { display:grid; grid-template-columns:1fr 280px; align-items:center; border-bottom:1px solid var(--line); }
+    .d4 .time-label { color:var(--muted); font-size:21px; }
+    .d4 .time { margin-top:24px; font-size:205px; font-weight:300; line-height:.75; letter-spacing:-.07em; }
+    .d4 .date { display:flex; height:250px; border-left:1px solid var(--line); flex-direction:column; justify-content:center; align-items:center; }
+    .d4 .date strong { color:var(--cyan); font-size:74px; font-weight:400; }
+    .d4 .date span { margin-top:18px; color:var(--muted); font-size:20px; text-align:center; line-height:1.5; }
+    .d4 .power { display:grid; grid-template-columns:200px 1fr 1fr; border:1px solid var(--line); border-radius:26px; overflow:hidden; background:rgba(6,20,29,.72); }
+    .d4 .power-title { display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:21px; border-right:1px solid var(--line); }
+    .d4 .power-cell { padding:30px 38px; border-right:1px solid var(--line); }
+    .d4 .power-cell:last-child { border:0; }
+    .d4 .power-cell label { color:var(--accent); font-size:21px; }
+    .d4 .power-cell strong { display:block; margin-top:23px; font-size:93px; font-weight:300; line-height:1; }
+    .d4 .power-cell strong small { color:var(--muted); font-size:24px; }
+    .d4 .cores { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+    .d4 .core { --accent:var(--cyan); display:grid; grid-template-rows:650px 1fr; border:1px solid var(--line); border-radius:32px; overflow:hidden; background:rgba(6,21,30,.68); }
+    .d4 .core.gpu { --accent:var(--violet); }
+    .d4 .gauge-wrap { padding:34px; border-bottom:1px solid var(--line); }
+    .d4 .gauge-head { display:flex; justify-content:space-between; color:var(--accent); font-size:23px; }
+    .d4 .gauge { position:relative; width:420px; height:420px; margin:60px auto 0; border-radius:50%; background:conic-gradient(var(--accent) 0 var(--pct),#17303d var(--pct) 100%); }
+    .d4 .gauge::before { content:""; position:absolute; inset:24px; border-radius:50%; background:#081923; box-shadow:inset 0 0 0 1px var(--line); }
+    .d4 .gauge::after { content:""; position:absolute; inset:0; border-radius:50%; background:repeating-conic-gradient(transparent 0 9deg,#07141d 9deg 10.5deg); }
+    .d4 .gauge-data { position:absolute; z-index:2; inset:0; display:flex; flex-direction:column; justify-content:center; align-items:center; }
+    .d4 .gauge-data strong { font-size:125px; font-weight:300; line-height:1; }
+    .d4 .gauge-data span { margin-top:10px; color:var(--accent); font-size:25px; }
+    .d4 .stats { display:grid; grid-template-rows:repeat(3,1fr); padding:0 36px; }
+    .d4 .stat { display:grid; grid-template-columns:130px 1fr; align-items:center; border-bottom:1px solid var(--line); }
+    .d4 .stat:last-child { border:0; }
+    .d4 .stat label { color:var(--muted); font-size:20px; }
+    .d4 .stat strong { text-align:right; font-size:51px; font-weight:400; }
+    .d4 .memory { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+    .d4 .mem { border:1px solid var(--line); border-radius:26px; padding:31px 38px; background:rgba(6,21,30,.68); }
+    .d4 .mem-head { display:flex; justify-content:space-between; color:var(--muted); font-size:20px; }
+    .d4 .mem-head strong { color:var(--accent); font-size:28px; }
+    .d4 .mem-value { margin-top:34px; font-size:68px; font-weight:300; }
+    .d4 .bar { height:16px; margin-top:35px; background:#17303d; --accent:var(--cyan); }
+    .d4 .vram .bar { --accent:var(--violet); }
+
+    /* 05 — Mono Calendar */
+    .d5 {
+      --ink:#f3f3ef; --muted:#90908a; --line:#f3f3ef; --fine:#4a4a47;
+      grid-template-rows:500px 300px 1200px 428px; gap:24px;
+      padding:54px 58px; color:var(--ink); font-family:"Bahnschrift",sans-serif; background:#0b0b0b;
+    }
+    .d5::before { content:""; position:absolute; inset:36px; border:4px solid var(--line); pointer-events:none; }
+    .d5 > * { margin-left:26px; margin-right:26px; position:relative; z-index:1; }
+    .d5 .clock { display:grid; grid-template-columns:1fr 205px; border-bottom:4px solid var(--line); padding:28px 0 38px; }
+    .d5 .clock label { color:var(--muted); font-size:22px; }
+    .d5 .time { margin-top:40px; font-size:202px; line-height:.72; letter-spacing:-.06em; }
+    .d5 .date { border-left:2px solid var(--line); display:flex; flex-direction:column; justify-content:center; align-items:center; }
+    .d5 .date strong { font-size:82px; font-weight:400; }
+    .d5 .date span { margin-top:20px; color:var(--muted); font-size:19px; text-align:center; line-height:1.5; }
+    .d5 .power { display:grid; grid-template-columns:180px 1fr 1fr; border-bottom:2px solid var(--line); }
+    .d5 .power-title { display:flex; align-items:center; font-size:22px; }
+    .d5 .power-cell { border-left:2px solid var(--line); padding:29px 35px; }
+    .d5 .power-cell label { color:var(--muted); font-size:20px; }
+    .d5 .power-cell strong { display:block; margin-top:18px; font-size:93px; font-weight:400; line-height:1; }
+    .d5 .power-cell small { font-size:24px; color:var(--muted); }
+    .d5 .cores { display:grid; grid-template-rows:1fr 1fr; border-bottom:2px solid var(--line); }
+    .d5 .core { display:grid; grid-template-columns:112px 290px 1fr; }
+    .d5 .core + .core { border-top:2px solid var(--line); }
+    .d5 .core-name { display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; transform:rotate(180deg); border-right:2px solid var(--line); font-size:42px; letter-spacing:.16em; }
+    .d5 .load { display:flex; flex-direction:column; justify-content:center; padding:30px; border-right:1px solid var(--fine); }
+    .d5 .load label { color:var(--muted); font-size:19px; }
+    .d5 .load strong { margin-top:20px; font-size:135px; font-weight:400; line-height:.9; }
+    .d5 .load strong small { font-size:27px; }
+    .d5 .stats { display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; }
+    .d5 .stat { display:flex; flex-direction:column; justify-content:center; padding:25px 31px; border-right:1px solid var(--fine); border-bottom:1px solid var(--fine); }
+    .d5 .stat:nth-child(2n) { border-right:0; }
+    .d5 .stat:nth-child(n+3) { border-bottom:0; }
+    .d5 .stat label { color:var(--muted); font-size:18px; }
+    .d5 .stat strong { margin-top:16px; font-size:47px; font-weight:400; }
+    .d5 .memory { display:grid; grid-template-columns:1fr 1fr; }
+    .d5 .mem { padding:30px 34px; }
+    .d5 .mem + .mem { border-left:2px solid var(--line); }
+    .d5 .mem-head { display:flex; justify-content:space-between; color:var(--muted); font-size:19px; }
+    .d5 .mem-value { margin-top:48px; font-size:75px; }
+    .d5 .mem-value small { font-size:22px; color:var(--muted); }
+    .d5 .bar { height:18px; margin-top:45px; background:#30302e; --accent:var(--ink); }
+    .d5 .mem-foot { display:flex; justify-content:space-between; margin-top:19px; color:var(--muted); font-size:18px; }
+  </style>
+</head>
+<body>
+<main>
+  <section class="screen d1" data-design="1" aria-label="Chronograph concept">
+    <header class="clock"><div><small class="caps">AIDA64 · SYSTEM TIME</small><div class="time">23:15:29</div></div><div class="date"><div class="day caps">Monday</div><div class="full-date caps">2026 / 08 / 24</div></div></header>
+    <section class="power"><div class="power-title caps"><span>Power draw</span></div><div class="power-cell cpu-power"><label class="caps">CPU package</label><div class="watts"><span class="power-number">68.2</span><span class="unit">W</span></div></div><div class="power-cell gpu-power"><label class="caps">GPU board</label><div class="watts"><span class="power-number">250.8</span><span class="unit">W</span></div></div></section>
+    <section class="cores">
+      <article class="core-card"><header class="core-head"><strong>CPU</strong><span class="caps">Processor</span></header><div class="load"><div><label class="caps">Utilization</label><strong>20<span class="unit">%</span></strong></div><div class="load-ring" style="--pct:20%"></div></div><div class="stats"><div class="stat"><label class="caps">Temp</label><strong>62 <span class="unit">°C</span></strong></div><div class="stat"><label class="caps">Fan</label><strong>1487 <span class="unit">RPM</span></strong></div><div class="stat"><label class="caps">Core 1</label><strong>4890 <span class="unit">MHz</span></strong></div></div></article>
+      <article class="core-card gpu"><header class="core-head"><strong>GPU</strong><span class="caps">Graphics</span></header><div class="load"><div><label class="caps">Utilization</label><strong>52<span class="unit">%</span></strong></div><div class="load-ring" style="--pct:52%"></div></div><div class="stats"><div class="stat"><label class="caps">Temp</label><strong>55 <span class="unit">°C</span></strong></div><div class="stat"><label class="caps">Fan</label><strong>1333 <span class="unit">RPM</span></strong></div><div class="stat"><label class="caps">Clock</label><strong>2760 <span class="unit">MHz</span></strong></div></div></article>
+    </section>
+    <section class="memory"><div class="memory-title caps">Memory load</div><div class="mem-cell" style="--accent:var(--amber)"><div class="mem-top"><label class="caps">RAM</label><strong>40%</strong></div><div class="mem-value">19.1 <span class="unit">GB</span></div><div class="bar" style="--fill:40%"></div><div class="mem-foot"><span>USED</span><span>47.6 GB TOTAL</span></div></div><div class="mem-cell vram" style="--accent:var(--blue)"><div class="mem-top"><label class="caps">VRAM</label><strong>58%</strong></div><div class="mem-value">9.2 <span class="unit">GB</span></div><div class="bar" style="--fill:58%"></div><div class="mem-foot"><span>USED</span><span>16.0 GB TOTAL</span></div></div></section>
+  </section>
+
+  <section class="screen d2" data-design="2" aria-label="Time Edition concept">
+    <header class="clock"><div><div class="edition caps">Raptorlake workstation · local time</div><div class="time">23:15:29</div></div><div class="date"><strong>MON</strong><span class="caps">24 August<br>2026</span></div></header>
+    <section class="power"><div class="power-title caps">Power edition</div><div class="power-cell"><label class="caps">CPU package</label><strong>68.2 <small>W</small></strong></div><div class="power-cell"><label class="caps">GPU board</label><strong>250.8 <small>W</small></strong></div></section>
+    <section class="cores"><article class="core" style="--accent:var(--red)"><div class="core-index caps">01 / Processor</div><h2>CPU core</h2><div class="load"><label class="caps">Utilization</label><strong>20<small>%</small></strong></div><div class="rows"><div class="row"><label class="caps">Temp</label><strong>62 <span class="unit">°C</span></strong></div><div class="row"><label class="caps">Fan</label><strong>1487 <span class="unit">RPM</span></strong></div><div class="row"><label class="caps">Clock</label><strong>5420 <span class="unit">MHz</span></strong></div></div></article><article class="core" style="--accent:var(--blue)"><div class="core-index caps">02 / Graphics</div><h2>GPU core</h2><div class="load"><label class="caps">Utilization</label><strong>52<small>%</small></strong></div><div class="rows"><div class="row"><label class="caps">Temp</label><strong>55 <span class="unit">°C</span></strong></div><div class="row"><label class="caps">Fan</label><strong>1333 <span class="unit">RPM</span></strong></div><div class="row"><label class="caps">Clock</label><strong>2760 <span class="unit">MHz</span></strong></div></div></article></section>
+    <section class="memory"><div class="mem-cell" style="--accent:var(--red)"><div class="mem-head caps"><span>Memory / used</span><span>40%</span></div><div class="mem-value"><strong>19.1</strong><span>of 47.6 GB</span></div><div class="bar" style="--fill:40%"></div></div><div class="mem-cell" style="--accent:var(--blue)"><div class="mem-head caps"><span>Video memory / used</span><span>58%</span></div><div class="mem-value"><strong>9.2</strong><span>of 16.0 GB</span></div><div class="bar" style="--fill:58%;--accent:var(--blue)"></div></div></section>
+  </section>
+
+  <section class="screen d3" data-design="3" aria-label="Command Time concept">
+    <header class="clock"><div class="time-wrap"><label class="caps">System clock // live</label><div class="time">23:15:29</div></div><div class="date"><strong>24</strong><span class="caps">MONDAY<br>2026—08</span></div></header>
+    <section class="power"><div class="power-title caps">Power channels<strong>02 ACTIVE</strong></div><div class="power-cell"><label class="caps">CPU / package</label><strong>68.2 <small>W</small></strong></div><div class="power-cell"><label class="caps">GPU / board</label><strong>250.8 <small>W</small></strong></div></section>
+    <section class="cores"><article class="core"><div class="core-name">CPU</div><div class="load"><label class="caps">Utilization</label><strong>20<small>%</small></strong><div class="bar" style="--fill:20%"></div></div><div class="stats"><div class="stat"><label class="caps">Core temp</label><strong>62 <span class="unit">°C</span></strong></div><div class="stat"><label class="caps">Fan speed</label><strong>1487 <span class="unit">RPM</span></strong></div><div class="stat"><label class="caps">Core clock</label><strong>5420 <span class="unit">MHz</span></strong></div><div class="stat"><label class="caps">Package power</label><strong>68.2 <span class="unit">W</span></strong></div></div></article><article class="core"><div class="core-name">GPU</div><div class="load"><label class="caps">Utilization</label><strong>52<small>%</small></strong><div class="bar" style="--fill:52%"></div></div><div class="stats"><div class="stat"><label class="caps">Core temp</label><strong>55 <span class="unit">°C</span></strong></div><div class="stat"><label class="caps">Fan speed</label><strong>1333 <span class="unit">RPM</span></strong></div><div class="stat"><label class="caps">Core clock</label><strong>2760 <span class="unit">MHz</span></strong></div><div class="stat"><label class="caps">Board power</label><strong>250.8 <span class="unit">W</span></strong></div></div></article></section>
+    <section class="memory"><div class="mem"><div class="mem-head caps"><span>RAM load</span><strong>40%</strong></div><div class="mem-value">19.1 <small>GB / 47.6</small></div><div class="bar" style="--fill:40%"></div></div><div class="mem"><div class="mem-head caps"><span>VRAM load</span><strong>58%</strong></div><div class="mem-value">9.2 <small>GB / 16.0</small></div><div class="bar" style="--fill:58%"></div></div></section>
+  </section>
+
+  <section class="screen d4" data-design="4" aria-label="Orbit Clock concept">
+    <header class="clock"><div><div class="time-label caps">AIDA64 / System time</div><div class="time">23:15:29</div></div><div class="date"><strong>24</strong><span class="caps">Monday<br>August 2026</span></div></header>
+    <section class="power"><div class="power-title caps">Power draw</div><div class="power-cell" style="--accent:var(--cyan)"><label class="caps">CPU package</label><strong>68.2 <small>W</small></strong></div><div class="power-cell" style="--accent:var(--violet)"><label class="caps">GPU board</label><strong>250.8 <small>W</small></strong></div></section>
+    <section class="cores"><article class="core"><div class="gauge-wrap"><div class="gauge-head caps"><span>CPU load</span><span>01</span></div><div class="gauge" style="--pct:20%"><div class="gauge-data"><strong>20</strong><span>% LOAD</span></div></div></div><div class="stats"><div class="stat"><label class="caps">Temp</label><strong>62 <span class="unit">°C</span></strong></div><div class="stat"><label class="caps">Fan</label><strong>1487 <span class="unit">RPM</span></strong></div><div class="stat"><label class="caps">Clock</label><strong>5420 <span class="unit">MHz</span></strong></div></div></article><article class="core gpu"><div class="gauge-wrap"><div class="gauge-head caps"><span>GPU load</span><span>02</span></div><div class="gauge" style="--pct:52%"><div class="gauge-data"><strong>52</strong><span>% LOAD</span></div></div></div><div class="stats"><div class="stat"><label class="caps">Temp</label><strong>55 <span class="unit">°C</span></strong></div><div class="stat"><label class="caps">Fan</label><strong>1333 <span class="unit">RPM</span></strong></div><div class="stat"><label class="caps">Clock</label><strong>2760 <span class="unit">MHz</span></strong></div></div></article></section>
+    <section class="memory"><div class="mem" style="--accent:var(--cyan)"><div class="mem-head caps"><span>RAM used</span><strong>40%</strong></div><div class="mem-value">19.1 <span class="unit">/ 47.6 GB</span></div><div class="bar" style="--fill:40%"></div></div><div class="mem vram" style="--accent:var(--violet)"><div class="mem-head caps"><span>VRAM used</span><strong>58%</strong></div><div class="mem-value">9.2 <span class="unit">/ 16.0 GB</span></div><div class="bar" style="--fill:58%"></div></div></section>
+  </section>
+
+  <section class="screen d5" data-design="5" aria-label="Mono Calendar concept">
+    <header class="clock"><div><label class="caps">Local system time</label><div class="time">23:15:29</div></div><div class="date"><strong>24</strong><span class="caps">MONDAY<br>AUG · 2026</span></div></header>
+    <section class="power"><div class="power-title caps">Power draw</div><div class="power-cell"><label class="caps">CPU package</label><strong>68.2 <small>W</small></strong></div><div class="power-cell"><label class="caps">GPU board</label><strong>250.8 <small>W</small></strong></div></section>
+    <section class="cores"><article class="core"><div class="core-name">CPU</div><div class="load"><label class="caps">Utilization</label><strong>20<small>%</small></strong></div><div class="stats"><div class="stat"><label class="caps">Temp</label><strong>62 <span class="unit">°C</span></strong></div><div class="stat"><label class="caps">Fan</label><strong>1487 <span class="unit">RPM</span></strong></div><div class="stat"><label class="caps">Clock</label><strong>5420 <span class="unit">MHz</span></strong></div><div class="stat"><label class="caps">Power</label><strong>68.2 <span class="unit">W</span></strong></div></div></article><article class="core"><div class="core-name">GPU</div><div class="load"><label class="caps">Utilization</label><strong>52<small>%</small></strong></div><div class="stats"><div class="stat"><label class="caps">Temp</label><strong>55 <span class="unit">°C</span></strong></div><div class="stat"><label class="caps">Fan</label><strong>1333 <span class="unit">RPM</span></strong></div><div class="stat"><label class="caps">Clock</label><strong>2760 <span class="unit">MHz</span></strong></div><div class="stat"><label class="caps">Power</label><strong>250.8 <span class="unit">W</span></strong></div></div></article></section>
+    <section class="memory"><div class="mem"><div class="mem-head caps"><span>RAM used</span><span>40%</span></div><div class="mem-value">19.1 <small>/ 47.6 GB</small></div><div class="bar" style="--fill:40%"></div><div class="mem-foot"><span>USED</span><span>AVAILABLE 28.5 GB</span></div></div><div class="mem"><div class="mem-head caps"><span>VRAM used</span><span>58%</span></div><div class="mem-value">9.2 <small>/ 16.0 GB</small></div><div class="bar" style="--fill:58%"></div><div class="mem-foot"><span>USED</span><span>AVAILABLE 6.8 GB</span></div></div></section>
+  </section>
+</main>
+<script>
+  const params = new URLSearchParams(location.search);
+  const selected = params.get('design') || '1';
+  const active = document.querySelector(`[data-design="${selected}"]`) || document.querySelector('[data-design="1"]');
+  active.classList.add('active');
+  if (params.get('mode') === 'background') active.classList.add('background-mode');
+</script>
+</body>
+</html>
