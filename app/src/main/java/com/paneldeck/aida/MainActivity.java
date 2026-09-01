@@ -14,6 +14,7 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
@@ -58,10 +59,14 @@ public final class MainActivity extends Activity {
     private WebView panel;
     private ProgressBar progress;
     private TextView settingsButton;
+    private View batteryIndicator;
+    private TextView batteryValue;
+    private ProgressBar batteryBar;
     private TextView holidaySyncStatus;
     private FrameLayout sleepOverlay;
     private GestureDetector gestures;
     private boolean receiverRegistered;
+    private boolean batteryReceiverRegistered;
 
     private final android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable hideSettingsButton = () -> {
@@ -78,6 +83,9 @@ public final class MainActivity extends Activity {
     };
     private final BroadcastReceiver modeReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) { applyScreenMode(); }
+    };
+    private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) { updateBattery(intent); }
     };
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -113,11 +121,27 @@ public final class MainActivity extends Activity {
             else registerLegacyReceiver(filter);
             receiverRegistered = true;
         }
+        if (!batteryReceiverRegistered) {
+            IntentFilter filter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+            Intent sticky;
+            if (Build.VERSION.SDK_INT >= 33) {
+                sticky = registerReceiver(batteryReceiver, filter, Context.RECEIVER_EXPORTED);
+            } else {
+                sticky = registerLegacyBatteryReceiver(filter);
+            }
+            if (sticky != null) updateBattery(sticky);
+            batteryReceiverRegistered = true;
+        }
     }
 
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     private void registerLegacyReceiver(IntentFilter filter) {
         registerReceiver(modeReceiver, filter);
+    }
+
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
+    private Intent registerLegacyBatteryReceiver(IntentFilter filter) {
+        return registerReceiver(batteryReceiver, filter);
     }
 
     @Override protected void onResume() {
@@ -138,6 +162,10 @@ public final class MainActivity extends Activity {
         if (receiverRegistered) {
             unregisterReceiver(modeReceiver);
             receiverRegistered = false;
+        }
+        if (batteryReceiverRegistered) {
+            unregisterReceiver(batteryReceiver);
+            batteryReceiverRegistered = false;
         }
         super.onStop();
     }
@@ -192,6 +220,11 @@ public final class MainActivity extends Activity {
         progress.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.TRANSPARENT));
         root.addView(progress, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(2), Gravity.TOP));
 
+        batteryIndicator = buildBatteryIndicator();
+        FrameLayout.LayoutParams batteryLayout = new FrameLayout.LayoutParams(dp(112), dp(34), Gravity.TOP | Gravity.END);
+        batteryLayout.setMargins(0, dp(54), dp(17), 0);
+        root.addView(batteryIndicator, batteryLayout);
+
         settingsButton = new TextView(this);
         settingsButton.setText("⚙");
         settingsButton.setTextColor(INK);
@@ -230,6 +263,58 @@ public final class MainActivity extends Activity {
         panel.setOnTouchListener(gestureListener);
         sleepOverlay.setOnTouchListener(gestureListener);
         setContentView(root);
+    }
+
+    private View buildBatteryIndicator() {
+        LinearLayout indicator = new LinearLayout(this);
+        indicator.setOrientation(LinearLayout.VERTICAL);
+        indicator.setGravity(Gravity.END);
+        indicator.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
+
+        TextView label = text("PHONE", 9, Color.rgb(154, 158, 162));
+        label.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        label.setLetterSpacing(.16f);
+
+        batteryValue = text("--%", 11, Color.WHITE);
+        batteryValue.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        batteryValue.setLetterSpacing(.08f);
+        batteryValue.setGravity(Gravity.END);
+
+        row.addView(label, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(20)));
+        row.addView(new Space(this), new LinearLayout.LayoutParams(dp(9), 1));
+        row.addView(batteryValue, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(20)));
+        indicator.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(21)));
+
+        batteryBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        batteryBar.setMax(100);
+        batteryBar.setProgress(0);
+        batteryBar.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(42, 44, 45)));
+        LinearLayout.LayoutParams barLayout = new LinearLayout.LayoutParams(dp(88), dp(2));
+        barLayout.gravity = Gravity.END;
+        barLayout.topMargin = dp(2);
+        indicator.addView(batteryBar, barLayout);
+        return indicator;
+    }
+
+    private void updateBattery(Intent intent) {
+        if (batteryValue == null || batteryBar == null || intent == null) return;
+        int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+        int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
+        int percent = level < 0 || scale <= 0 ? 0 : Math.max(0, Math.min(100, Math.round(level * 100f / scale)));
+        int status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, BatteryManager.BATTERY_STATUS_UNKNOWN);
+        boolean charging = status == BatteryManager.BATTERY_STATUS_CHARGING
+                || status == BatteryManager.BATTERY_STATUS_FULL;
+        int color = percent <= 20 ? Color.rgb(255, 175, 72)
+                : charging ? Color.rgb(103, 157, 255) : Color.rgb(220, 224, 218);
+        batteryValue.setText(charging ? percent + "%  ⚡" : percent + "%");
+        batteryValue.setTextColor(color);
+        batteryBar.setProgress(percent);
+        batteryBar.setProgressTintList(android.content.res.ColorStateList.valueOf(color));
+        String state = charging ? "，正在充电" : "";
+        batteryIndicator.setContentDescription("手机电量 " + percent + "%" + state);
     }
 
     private void configurePanel() {
