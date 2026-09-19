@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>PanelDeck</AssemblyName>
+    <Version>2.5.0</Version>
+    <!-- Keep adaptive GC, but cap heap count instead of scaling it with PC cores. -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>Assets/paneldeck.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../RuntimeBootstrap/RuntimePrerequisites.cs" Link="RuntimePrerequisites.cs" />
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="9" />
+    <RuntimeHostConfigurationOption Include="System.GC.HeapCount" Value="1" />
+    <RuntimeHostConfigurationOption Include="System.GC.NoAffinitize" Value="true" />
+    <EmbeddedResource Include="Assets/paneldeck.ico" LogicalName="PanelDeck.AppIcon" />
+    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />
+    <Content Include="../../panel/*" Link="panel/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

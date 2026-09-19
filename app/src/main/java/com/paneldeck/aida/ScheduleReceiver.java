@@ -11,6 +11,7 @@ public final class ScheduleReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
+        if (DesktopLinkService.enabled(context)) { ScheduleManager.scheduleNext(context); return; }
         boolean off = ScheduleManager.isOff(context, System.currentTimeMillis());
         if (!off) {
             PowerManager power = (PowerManager) context.getSystemService(Context.POWER_SERVICE);

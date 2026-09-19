@@ -1,0 +1,19 @@
+/* Shared low-cost network strip: decimal bytes/s, no charts or added timers. */
+body{--footer-height:148px}
+body.landscape{--footer-height:100px}
+body[data-theme] footer,body[data-theme].compact footer,body[data-theme].landscape footer{height:var(--footer-height);min-height:var(--footer-height);display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) 32px;gap:10px;align-items:stretch;padding:0;font-size:26px;border:0}
+body[data-theme] .net-strip{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:32px;border-top:2px solid var(--line);padding-top:14px;align-items:center;min-width:0}
+body[data-theme] .net-cell{display:flex;align-items:baseline;gap:18px;min-width:0}
+body[data-theme] .net-label{font-size:28px;line-height:1.2;white-space:nowrap;color:var(--muted);font-weight:500}
+body[data-theme] .net-cell .reading{display:flex;align-items:baseline;justify-content:flex-start;gap:8px;width:auto;height:auto;margin:0;min-width:0}
+body[data-theme] .net-cell .reading strong{font-size:62px;line-height:1.12;letter-spacing:-1px;font-weight:500;flex:0 0 auto;color:var(--text)}
+body[data-theme] .net-cell .reading small{font-size:27px;line-height:1.12;letter-spacing:0;color:var(--muted)}
+body[data-theme] .footer-status{display:flex;align-items:center;justify-content:space-between;gap:24px;min-width:0;font-size:26px;line-height:1.2;color:var(--muted)}
+body[data-theme].landscape footer{grid-template-rows:minmax(0,1fr) 26px;gap:6px}
+body[data-theme].landscape .net-strip{padding-top:6px;gap:48px}
+body[data-theme].landscape .net-cell{gap:18px}
+body[data-theme].landscape .net-label{font-size:24px}
+body[data-theme].landscape .net-cell .reading strong{font-size:44px}
+body[data-theme].landscape .net-cell .reading small{font-size:22px}
+body[data-theme].landscape .footer-status{font-size:23px}
+body[data-theme].stale .net-cell .reading strong{color:var(--muted)}

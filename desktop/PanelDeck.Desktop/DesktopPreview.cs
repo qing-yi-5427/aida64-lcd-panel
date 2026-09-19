@@ -1,0 +1,64 @@
+namespace PanelDeck;
+
+/// <summary>Native hidden-handle rendering, with the same DPI initialization as the product.</summary>
+public static class DesktopPreview
+{
+    private static int checks;
+    private static string output = "";
+    private static void Require(bool pass, string reason) { if (!pass) { File.WriteAllText(Path.Combine(output,"runtime-failure.txt"),reason); throw new InvalidOperationException(reason); } checks++; }
+    public static void Render(string directory) => RenderRuntime(directory);
+    public static void RenderRuntime(string directory) {
+        checks = 0; directory = Path.GetFullPath(directory); Directory.CreateDirectory(directory); output = directory;
+        File.Delete(Path.Combine(output,"runtime-failure.txt"));
+        using var controller = new Controller(new Settings());
+        using var main = new MainForm(controller, preview: true);
+        main.ApplySnapshot(Sample(), true, 100, true);
+        Capture(main, Path.Combine(directory, "desktop-runtime.png"));
+        Require(Math.Abs(main.ClientSize.Width - 1092 * main.DeviceDpi / 96f) <= 2, "Main content did not scale with its font/DPI");
+        Require(Math.Abs(main.ClientSize.Height - 812 * main.DeviceDpi / 96f) <= 2, "Main vertical DPI baseline lost");
+        main.Size = main.MinimumSize;
+        Capture(main, Path.Combine(directory, "desktop-minimum.png"));
+        for (int page = 0; page < 4; page++) {
+            using var settings = new SettingsForm(controller); settings.SelectPage(page);
+            Capture(settings, Path.Combine(directory, $"settings-runtime-{page}.png"));
+        }
+        // Corner and edge hit tests do not move, resize or show any window.
+        foreach (var (point, expected) in new (Point,int)[] { (new(0,0),13),(new(99,0),14),(new(0,99),16),(new(99,99),17),(new(0,50),10),(new(99,50),11),(new(50,0),12),(new(50,99),15),(new(50,50),1) })
+            Require(BorderlessForm.ResizeHitTest(point,new(100,100),6)==expected,"Window resize edge mismatch");
+        File.WriteAllText(Path.Combine(directory,"runtime-checks.txt"),$"PASS {checks} native hidden-window geometry checks; actual DPI {main.DeviceDpi}. No window was shown.\n");
+    }
+    private static IEnumerable<Control> All(Control c) => new[] { c }.Concat(c.Controls.Cast<Control>().SelectMany(All));
+    private static void LayoutAll(Control c) { c.PerformLayout(); foreach(Control child in c.Controls) LayoutAll(child); }
+    private static void Capture(Form form, string filename) {
+        _ = form.Handle;
+        foreach (var control in All(form)) _ = control.Handle;
+        form.PerformAutoScale(); LayoutAll(form);
+        Require(!form.Visible,"Preview must remain hidden");
+        Require(form.FormBorderStyle == FormBorderStyle.None,"System title bar must be absent");
+        foreach(var card in All(form).OfType<MetricCard>()) {
+            foreach(var label in card.Controls.OfType<UiLabel>()) {
+                Require(label.Bottom <= card.ClientSize.Height + 1,"Metric falls outside its card");
+                Require(label.GetPreferredSize(new Size(label.Width,0)).Height <= label.Height + 2,$"Metric text clipped vertically: {label.Text}, preferred {label.GetPreferredSize(new Size(label.Width,0))}, actual {label.Size}, font {label.Font.SizeInPoints}, DPI {label.DeviceDpi}");
+            }
+        }
+        foreach(var button in All(form).OfType<UiButton>()) {
+            using var font = new Font(button.Font.FontFamily,button.Font.SizeInPoints * button.DeviceDpi / 72f,button.Font.Style,GraphicsUnit.Pixel);
+            using var bitmap = new Bitmap(1,1); using var graphics = Graphics.FromImage(bitmap);
+            Require(graphics.MeasureString(button.Text,font).Width <= button.ClientSize.Width + 2,"Button text clipped: " + button.Text);
+        }
+        var entries = All(form).Where(c=>c is Label or Button or ComboBox or NumericUpDown || c==form).Select(c=>new {Type=c.GetType().Name,c.Text,c.DeviceDpi,c.Width,c.Height,c.Left,c.Top,Font=c.Font.SizeInPoints,Family=c.Font.FontFamily.Name});
+        File.WriteAllText(Path.ChangeExtension(filename,"json"),System.Text.Json.JsonSerializer.Serialize(entries,new System.Text.Json.JsonSerializerOptions{WriteIndented=true}));
+        using var image = new Bitmap(form.ClientSize.Width,form.ClientSize.Height);
+        image.SetResolution(form.DeviceDpi,form.DeviceDpi);
+        form.DrawToBitmap(image,new Rectangle(Point.Empty,form.ClientSize));
+        image.Save(filename,System.Drawing.Imaging.ImageFormat.Png);
+    }
+    private static Snapshot Sample() {
+        var metrics = new Dictionary<string, Metric>();
+        void Add(string key, string unit, float value) => metrics[key] = new(key, unit, value, "离屏预览示例数据");
+        Add("cpuLoad", "%", 26.4f); Add("cpuTemp", "°C", 54); Add("cpuPower", "W", 64); Add("cpuClock", "MHz", 5125); Add("cpuFan", "RPM", 1260);
+        Add("gpuLoad", "%", 72); Add("gpuTemp", "°C", 63); Add("gpuPower", "W", 285); Add("gpuClock", "MHz", 2670); Add("gpuFan", "RPM", 1480);
+        Add("ramUsed", "GB", 18.6f); Add("vramUsed", "GB", 11.2f); Add("ramLoad", "%", 29); Add("vramLoad", "%", 35);
+        return new(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), "示例电脑", new("on", "电脑已开机，保持亮屏"), "AMD Ryzen 7 9800X3D", "NVIDIA GeForce RTX 5090 D", metrics, null, new(false, false));
+    }
+}

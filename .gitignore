@@ -6,3 +6,16 @@ local.properties
 Screenshot_*.jpg
 *.keystore
 *.jks
+**/bin/
+**/obj/
+artifacts/
+.vs/
+**/node_modules/
+*.user
+*.suo
+*.log
+*.pfx
+*.p12
+.env
+.env.*
+!.env.example

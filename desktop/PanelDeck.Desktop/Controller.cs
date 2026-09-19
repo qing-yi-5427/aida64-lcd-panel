@@ -1,0 +1,183 @@
+using System.Net;
+using System.Net.NetworkInformation;
+using System.Text.Json;
+
+namespace PanelDeck;
+
+public sealed class Controller : IDisposable
+{
+    private volatile Settings settings;
+    public Settings Settings => settings;
+    public readonly PairingWindow Pairing = new();
+    private readonly CancellationTokenSource stop = new();
+    private LanServer? server;
+    private readonly SessionCollector sessionCollector = new();
+    private readonly NetworkMonitor networkMonitor = new();
+    private int authorizing;
+    private int disposed;
+    public bool AuthorizationPending => Volatile.Read(ref authorizing) != 0;
+    public bool SessionAuthorized => sessionCollector.IsAuthorized;
+    public async Task AuthorizeHardware() {
+        if (Interlocked.CompareExchange(ref authorizing, 1, 0) != 0) return;
+        try { await Task.Run(sessionCollector.Authorize); RequestSample(); }
+        finally { Volatile.Write(ref authorizing, 0); }
+    }
+    private Task? monitorTask, samplingTask;
+    private readonly SemaphoreSlim sampleRequested = new(0, 1);
+    private readonly Func<Settings, CancellationToken, Task<HardwareFrame>>? sampleOverride;
+    private volatile HardwareFrame frame = new(0, "CPU", "GPU", new(), [], null);
+    private volatile bool dashboardVisible;
+    public bool DashboardVisible {
+        get => dashboardVisible;
+        set { bool previous = dashboardVisible; dashboardVisible = value; if (value && !previous) RequestSample(); }
+    }
+    private void RequestSample() { if (Volatile.Read(ref disposed) != 0) return; try { if (sampleRequested.CurrentCount == 0) sampleRequested.Release(); } catch (SemaphoreFullException) { } }
+    private volatile bool manualOff, suspended;
+    private long phoneSeen = -60000;
+    private volatile int phoneBattery = -1;
+    private volatile bool phoneCharging;
+    private volatile Snapshot snapshot;
+    private IReadOnlyList<Reading> readings = Array.Empty<Reading>();
+    public Snapshot Current => snapshot;
+    public IReadOnlyList<Reading> Readings => readings;
+    public int PhoneBattery => phoneBattery;
+    public bool PhoneCharging => phoneCharging;
+    public bool PhoneOnline => Environment.TickCount64 - Interlocked.Read(ref phoneSeen) < 25000;
+    public string? Error { get; private set; }
+    public string CollectorStatus { get; private set; } = "正在检测采集服务";
+    public Controller(Settings value, Func<Settings, CancellationToken, Task<HardwareFrame>>? sampleOverride = null) {
+        settings = value;
+        this.sampleOverride = sampleOverride;
+        snapshot = new(0, Environment.MachineName, new("on", "正在启动"), "CPU", "GPU", new(), null,
+            new(false, false));
+    }
+    public void Auto() { manualOff = false; }
+    public void Off() { manualOff = true; }
+    public void PowerChanged(bool sleeping) {
+        networkMonitor.Reset();
+        suspended = sleeping;
+        if (sleeping) snapshot = snapshot with { Screen = new("off", "电脑正在休眠"), Pc = new(true, manualOff) };
+    }
+    public string[] Addresses() {
+        if (Settings.ListenAddress != "0.0.0.0") return [$"http://{Settings.ListenAddress}:{Settings.Port}"];
+        return NetworkInterface.GetAllNetworkInterfaces().Where(n => n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+            .SelectMany(n => n.GetIPProperties().UnicastAddresses).Select(n => n.Address)
+            .Where(ip => ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && LanServer.IsLocalNetwork(ip))
+            .Select(ip => $"http://{ip}:{Settings.Port}").Distinct().ToArray();
+    }
+    private async Task StartServer() {
+        var next = new LanServer(Settings.ListenAddress, Settings.Port, () => snapshot, () => Settings.Token, Pairing,
+            (battery, charging) => { phoneBattery = battery; phoneCharging = charging; Interlocked.Exchange(ref phoneSeen, Environment.TickCount64); }, Auto);
+        try { await next.Start(); server = next; Error = null; }
+        catch { await next.DisposeAsync(); throw; }
+    }
+    public async Task ApplySettings(Settings next) {
+        next.Validate();
+        var old = settings;
+        bool networkChanged = old.Port != next.Port || old.ListenAddress != next.ListenAddress || server == null;
+        if (networkChanged && server != null) { await server.DisposeAsync(); server = null; }
+        settings = next;
+        try {
+            if (networkChanged) await StartServer();
+            StartupRegistration.Set(next.StartWithWindows);
+            next.Save();
+            RequestSample();
+        } catch {
+            if (networkChanged && server != null) { await server.DisposeAsync(); server = null; }
+            settings = old;
+            try { StartupRegistration.Set(old.StartWithWindows); } catch { }
+            if (networkChanged) try { await StartServer(); } catch (Exception ex) { Error = "连接服务未启动：" + ex.Message; }
+            throw;
+        }
+    }
+    public async Task Start() {
+        try { await StartServer(); }
+        catch (Exception ex) { Error = "连接服务未启动，请检查设置中的地址和端口：" + ex.Message; }
+        monitorTask = Task.Run(async () => {
+            string lastMode = ""; bool wasOnline = false;
+            HardwareFrame? lastFrame = null;
+            bool? lastSuspended = null, lastManual = null;
+            try {
+                while (!stop.IsCancellationRequested) {
+                    var reading = frame;
+                    bool sleeping = suspended, manual = manualOff, online = PhoneOnline;
+                    if (!ReferenceEquals(lastFrame, reading) || lastSuspended != sleeping || lastManual != manual) {
+                        snapshot = new(reading.Timestamp, Environment.MachineName, ScreenPolicy.Decide(sleeping, manual), reading.Cpu, reading.Gpu, reading.Metrics, reading.Warning,
+                            new PcState(sleeping, manual));
+                        lastFrame = reading; lastSuspended = sleeping; lastManual = manual;
+                    }
+                    if ((lastMode == "off" && snapshot.Screen.Mode != "off") || (!wasOnline && online)) RequestSample();
+                    wasOnline = online; lastMode = snapshot.Screen.Mode;
+                    await Task.Delay(250, stop.Token);
+                }
+            } catch (OperationCanceledException) { }
+            catch (Exception ex) { DiagnosticLog.Write("activity", ex); Error = "电脑活动检测暂不可用，请重新打开曜屏。"; }
+        });
+        samplingTask = Task.Run(async () => {
+            long nextServiceAttempt = 0;
+            try {
+                while (!stop.IsCancellationRequested) {
+                    var config = settings; var now = Environment.TickCount64;
+                    try {
+                        HardwareFrame? next;
+                        if (sampleOverride != null) next = await sampleOverride(config, stop.Token);
+                        else {
+                            next = null;
+                            bool session = sessionCollector.IsRunning && sessionCollector.Pipe != null;
+                            if (sessionCollector.IsAuthorized) {
+                                next = await CollectorService.Read(stop.Token, sessionCollector.Pipe!);
+                                stop.Token.ThrowIfCancellationRequested();
+                            } else if (config.UseCollectorService && !AuthorizationPending && now >= nextServiceAttempt) {
+                                next = await CollectorService.Read(stop.Token);
+                                stop.Token.ThrowIfCancellationRequested();
+                                nextServiceAttempt = next == null ? now + 10000 : 0;
+                                if (next != null && DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - next.Timestamp < 30000) { sessionCollector.StopBasic(); session = false; }
+                            }
+                            if (next == null && session && sessionCollector.Pipe is string pipe) {
+                                next = await CollectorService.Read(stop.Token, pipe);
+                                stop.Token.ThrowIfCancellationRequested();
+                            }
+                            if (next != null && DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - next.Timestamp < 30000) {
+                                CollectorStatus = session ? sessionCollector.IsAuthorized ? "完整采集 · 本次运行已授权" : "基础采集 · 可点击授权完整读取" : "完整采集服务已连接";
+                            } else {
+                                // Keep native GPU libraries out of the UI/server process. UAC
+                                // replaces this basic worker rather than duplicating its drivers.
+                                if (!sessionCollector.IsRunning && !AuthorizationPending) sessionCollector.StartBasic();
+                                next = sessionCollector.Pipe == null ? null : await CollectorService.Read(stop.Token, sessionCollector.Pipe);
+                                if (next == null || DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - next.Timestamp >= 30000) throw new IOException("Collector unavailable");
+                                CollectorStatus = sessionCollector.IsAuthorized ? "完整采集 · 本次运行已授权" : "基础采集 · 可点击授权完整读取";
+                            }
+                        }
+                        if (config.CpuFanId.Length > 0) {
+                            var fan = next.Readings.FirstOrDefault(r => r.Type == "Fan" && r.Id == config.CpuFanId);
+                            var metrics = new Dictionary<string, Metric>(next.Metrics) { ["cpuFan"] = new("CPU 风扇", "RPM", fan?.Value, fan == null ? null : fan.Hardware + " · " + fan.Name) };
+                            next = next with { Metrics = metrics, Warning = fan == null ? "所选 CPU 风扇接口当前不可用。" : next.Warning?.Contains("CPU_FAN 暂按") == true ? null : next.Warning };
+                        }
+                        var network = networkMonitor.Sample();
+                        var networkMetrics = new Dictionary<string, Metric>(next.Metrics) {
+                            ["netDownload"] = new("下载", "B/s", network.Download, network.Source),
+                            ["netUpload"] = new("上传", "B/s", network.Upload, network.Source)
+                        };
+                        next = next with { Metrics = networkMetrics };
+                        frame = next; readings = next.Readings;
+                    } catch (OperationCanceledException) when (stop.IsCancellationRequested) { throw; }
+                    catch (Exception ex) {
+                        DiagnosticLog.Write("sampling", ex);
+                        frame = frame with { Warning = "采集暂不可用，正在重试。电脑状态联动仍在运行。" };
+                    }
+                    int interval = Current.Screen.Mode == "off" || (!PhoneOnline && !DashboardVisible) ? config.SleepSampleSeconds : config.SampleSeconds;
+                    await sampleRequested.WaitAsync(TimeSpan.FromSeconds(interval), stop.Token);
+                }
+            } catch (OperationCanceledException) { }
+        });
+    }
+    public void Export(string file) => File.WriteAllText(file, JsonSerializer.Serialize(new { snapshot, readings }, new JsonSerializerOptions { WriteIndented = true }));
+    public void Dispose() {
+        if (Interlocked.Exchange(ref disposed, 1) != 0) return;
+        Pairing.Close(); stop.Cancel();
+        try { Task.WaitAll(new[] { monitorTask ?? Task.CompletedTask, samplingTask ?? Task.CompletedTask }, 3000); } catch { }
+        if (server != null) try { Task.Run(async () => await server.DisposeAsync()).Wait(4000); } catch { }
+        sessionCollector.Dispose();
+        stop.Dispose();
+    }
+}

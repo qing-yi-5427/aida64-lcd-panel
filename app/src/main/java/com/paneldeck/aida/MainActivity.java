@@ -41,7 +41,9 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
-import android.widget.SeekBar;
+import android.widget.Spinner;
+import android.widget.ArrayAdapter;
+import android.widget.AdapterView;
 import android.widget.Space;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -67,8 +69,17 @@ public final class MainActivity extends Activity {
     private GestureDetector gestures;
     private boolean receiverRegistered;
     private boolean batteryReceiverRegistered;
+    private String activeTheme = "classic";
+    private Dialog controlDialog;
+    private boolean desktopPageReady;
+    private boolean themePreview;
 
     private final android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable restoreSettingsAfterPreview = () -> {
+        themePreview = false;
+        applyScreenMode();
+        if (controlDialog != null && !isFinishing() && !isDestroyed()) controlDialog.show();
+    };
     private final Runnable hideSettingsButton = () -> {
         if (settingsButton != null && settingsButton.getVisibility() == View.VISIBLE) {
             settingsButton.animate().alpha(0f).scaleX(.7f).scaleY(.7f).setDuration(180)
@@ -82,7 +93,7 @@ public final class MainActivity extends Activity {
         }
     };
     private final BroadcastReceiver modeReceiver = new BroadcastReceiver() {
-        @Override public void onReceive(Context context, Intent intent) { applyScreenMode(); }
+        @Override public void onReceive(Context context, Intent intent) { applyScreenMode(); updateDesktopPanel(); }
     };
     private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) { updateBattery(intent); }
@@ -93,12 +104,16 @@ public final class MainActivity extends Activity {
         ScheduleManager.ensureDefaults(this);
         HolidaySync.ensureOfflineData(this);
         prefs = ScheduleManager.prefs(this);
+        activeTheme = PanelTheme.normalize(prefs.getString(PanelTheme.KEY, "classic"));
         prepareWakeWindow();
         buildInterface();
         enterImmersiveMode();
-        if (savedInstanceState != null) panel.restoreState(savedInstanceState);
+        if (DesktopLinkService.enabled(this)) panel.loadUrl(PanelTheme.url(activeTheme));
+        else if (savedInstanceState != null) panel.restoreState(savedInstanceState);
         else panel.loadUrl(normalizeUrl(prefs.getString(ScheduleManager.KEY_HOME_URL, ScheduleManager.DEFAULT_HOME)));
-        if (Intent.ACTION_APPLICATION_PREFERENCES.equals(getIntent().getAction())) {
+        if (DesktopLinkService.enabled(this) && prefs.getString(DesktopLinkService.KEY_URL, "").isEmpty()) {
+            handler.postDelayed(this::showControlPanel, 300L);
+        } else if (Intent.ACTION_APPLICATION_PREFERENCES.equals(getIntent().getAction())) {
             handler.postDelayed(this::showControlPanel, 300L);
         } else if (ACTION_WAKE.equals(getIntent().getAction())) {
             handler.postDelayed(this::finishScheduledWake, 120L);
@@ -107,7 +122,8 @@ public final class MainActivity extends Activity {
             handler.postDelayed(this::showControlPanel, 450L);
         }
         ScheduleManager.scheduleNext(this);
-        HolidaySync.syncAsync(this, false, updated -> {
+        if (DesktopLinkService.enabled(this)) DesktopLinkService.start(this);
+        if (!DesktopLinkService.enabled(this)) HolidaySync.syncAsync(this, false, updated -> {
             if (updated) applyScreenMode();
             if (holidaySyncStatus != null) holidaySyncStatus.setText(HolidaySync.status(this));
         });
@@ -117,6 +133,7 @@ public final class MainActivity extends Activity {
         super.onStart();
         if (!receiverRegistered) {
             IntentFilter filter = new IntentFilter(ScheduleReceiver.ACTION_APPLY);
+            filter.addAction(DesktopLinkService.ACTION_UPDATE);
             if (Build.VERSION.SDK_INT >= 33) registerReceiver(modeReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
             else registerLegacyReceiver(filter);
             receiverRegistered = true;
@@ -148,13 +165,22 @@ public final class MainActivity extends Activity {
         super.onResume();
         enterImmersiveMode();
         panel.onResume();
+        panel.resumeTimers();
+        if (controlDialog != null && !controlDialog.isShowing() && !themePreview) controlDialog.show();
+        updateDesktopPanel();
         handler.removeCallbacks(stateTicker);
         handler.post(stateTicker);
     }
 
     @Override protected void onPause() {
+        if (themePreview) {
+            themePreview = false;
+            handler.removeCallbacks(restoreSettingsAfterPreview);
+            applyScreenMode();
+        }
         handler.removeCallbacks(stateTicker);
         panel.onPause();
+        if (DesktopLinkService.enabled(this)) panel.pauseTimers();
         super.onPause();
     }
 
@@ -168,6 +194,12 @@ public final class MainActivity extends Activity {
             batteryReceiverRegistered = false;
         }
         super.onStop();
+    }
+
+    @Override protected void onDestroy() {
+        handler.removeCallbacksAndMessages(null);
+        if (controlDialog != null) controlDialog.dismiss();
+        super.onDestroy();
     }
 
     @Override protected void onSaveInstanceState(Bundle outState) {
@@ -188,6 +220,11 @@ public final class MainActivity extends Activity {
     }
 
     @Override public void onBackPressed() { showSettingsButton(); }
+
+    @Override public void onConfigurationChanged(android.content.res.Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        if (controlDialog != null) sizeControlPanel(controlDialog);
+    }
 
     private void enterImmersiveMode() {
         getWindow().setStatusBarColor(Color.TRANSPARENT);
@@ -343,6 +380,12 @@ public final class MainActivity extends Activity {
                 Toast.makeText(MainActivity.this, "面板证书无效，已停止加载", Toast.LENGTH_LONG).show();
             }
             @Override public void onPageFinished(WebView view, String url) {
+                if (PanelTheme.isLocalUrl(url)) {
+                    desktopPageReady = true;
+                    applyPanelTheme(activeTheme);
+                    updateDesktopPanel();
+                    return;
+                }
                 // Some sensor pages disable user scaling in their viewport. Re-enable it for panel inspection.
                 view.evaluateJavascript("(function(){var m=document.querySelector('meta[name=viewport]');"
                         + "if(!m){m=document.createElement('meta');m.name='viewport';document.head.appendChild(m);}"
@@ -371,6 +414,11 @@ public final class MainActivity extends Activity {
         hint.setGravity(Gravity.CENTER);
         overlay.addView(hint, match());
         overlay.setOnLongClickListener(v -> {
+            if (DesktopLinkService.enabled(this)) {
+                DesktopLinkService.hold();
+                applyScreenMode();
+                return true;
+            }
             prefs.edit().putLong(ScheduleManager.KEY_OVERRIDE_UNTIL, System.currentTimeMillis() + 10 * 60_000L).apply();
             ScheduleManager.scheduleNext(this);
             applyScreenMode();
@@ -403,11 +451,13 @@ public final class MainActivity extends Activity {
     }
 
     private void showControlPanel() {
+        if (controlDialog != null) { controlDialog.show(); return; }
         handler.removeCallbacks(hideSettingsButton);
         settingsButton.setVisibility(View.GONE);
         SharedPreferences p = prefs;
 
         Dialog dialog = new Dialog(this);
+        controlDialog = dialog;
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
 
         LinearLayout shell = new LinearLayout(this);
@@ -415,15 +465,18 @@ public final class MainActivity extends Activity {
         shell.setBackground(rounded(Color.rgb(242, 241, 235), 24));
 
         LinearLayout header = new LinearLayout(this);
+        header.setTag("control-header");
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setPadding(dp(22), dp(17), dp(14), dp(17));
         header.setBackground(topRounded(INK, 24));
         LinearLayout heading = new LinearLayout(this);
         heading.setOrientation(LinearLayout.VERTICAL);
         TextView eyebrow = text("曜屏  /  PANEL CONTROL", 10, SIGNAL);
+        eyebrow.setTag("control-eyebrow");
         eyebrow.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         eyebrow.setLetterSpacing(.12f);
         TextView title = text("面板设置", 23, Color.WHITE);
+        title.setTag("control-title");
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         title.setPadding(0, dp(3), 0, 0);
         heading.addView(eyebrow, matchWrap());
@@ -442,7 +495,7 @@ public final class MainActivity extends Activity {
         form.setPadding(dp(18), dp(16), dp(18), dp(16));
 
         LinearLayout stateCard = card(INK);
-        TextView stateDot = text(ScheduleManager.isOff(this, System.currentTimeMillis()) ? "●  息屏计划" : "●  面板常亮", 12, SIGNAL);
+        TextView stateDot = text(ScheduleManager.isOff(this, System.currentTimeMillis()) ? "●  屏幕已息屏" : "●  面板常亮", 12, SIGNAL);
         stateDot.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         TextView state = text(scheduleSummary(), 12, Color.rgb(184, 190, 185));
         state.setPadding(0, dp(4), 0, 0);
@@ -450,7 +503,139 @@ public final class MainActivity extends Activity {
         stateCard.addView(state, matchWrap());
         form.addView(stateCard, cardParams());
 
+        form.addView(section("面板外观"), matchWrap());
+        LinearLayout appearanceCard = card(Color.WHITE);
+        // A separate, scrollable choice dialog has room for both the theme name
+        // and its description even on narrow screens and in landscape. OEM
+        // spinner dropdown templates can impose a fixed, single-line row height.
+        Spinner themePicker = new Spinner(this, Spinner.MODE_DIALOG);
+        themePicker.setContentDescription("选择面板主题");
+        themePicker.setPrompt("选择面板主题");
+        themePicker.setMinimumHeight(dp(52));
+        ArrayAdapter<String> themeAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, PanelTheme.NAMES) {
+            @Override public View getView(int position, View convertView, ViewGroup parent) {
+                TextView label = convertView instanceof TextView ? (TextView) convertView : new TextView(MainActivity.this);
+                label.setText(PanelTheme.NAMES[position]);
+                label.setTextColor(INK);
+                label.setTextSize(16);
+                label.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+                label.setSingleLine(false);
+                label.setEllipsize(null);
+                label.setHorizontallyScrolling(false);
+                label.setGravity(Gravity.CENTER_VERTICAL);
+                label.setMinHeight(dp(52));
+                label.setPadding(dp(4), dp(8), dp(8), dp(8));
+                label.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                return label;
+            }
+            @Override public View getDropDownView(int position, View convertView, ViewGroup parent) {
+                android.widget.CheckedTextView label = convertView instanceof android.widget.CheckedTextView
+                        ? (android.widget.CheckedTextView) convertView : new android.widget.CheckedTextView(MainActivity.this);
+                bindThemeChoice(label, position, position == themePicker.getSelectedItemPosition());
+                return label;
+            }
+        };
+        themePicker.setAdapter(themeAdapter);
+        themePicker.setSelection(PanelTheme.indexOf(activeTheme));
+        TextView themeDescription = text(PanelTheme.DESCRIPTIONS[PanelTheme.indexOf(activeTheme)], 13, Color.rgb(99, 105, 101));
+        themeDescription.setLineSpacing(dp(2), 1f);
+        themeDescription.setPadding(dp(4), dp(2), dp(4), dp(12));
+        themePicker.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (controlDialog != dialog) return;
+                applyPanelTheme(PanelTheme.IDS[position]);
+                themeDescription.setText(PanelTheme.DESCRIPTIONS[position]);
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
+        });
+        Button previewTheme = smallButton("全屏预览 4 秒");
+        styleOutlineButton(previewTheme);
+        previewTheme.setMinHeight(dp(48));
+        previewTheme.setMinimumHeight(dp(48));
+        previewTheme.setPadding(dp(12), dp(10), dp(12), dp(10));
+        previewTheme.setOnClickListener(v -> {
+            if (!PanelTheme.isLocalUrl(panel.getUrl())) {
+                Toast.makeText(this, "保存电脑联动设置后，即可预览内置面板主题", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            applyPanelTheme(PanelTheme.IDS[themePicker.getSelectedItemPosition()]);
+            // Preview is local and temporary: it never sends a hold/wake request to the PC.
+            themePreview = true;
+            applyScreenMode();
+            updateDesktopPanel();
+            dialog.hide();
+            handler.removeCallbacks(restoreSettingsAfterPreview);
+            handler.postDelayed(restoreSettingsAfterPreview, 4_000L);
+        });
+        appearanceCard.addView(themePicker, matchWrap());
+        appearanceCard.addView(themeDescription, matchWrap());
+        appearanceCard.addView(previewTheme, matchWrap());
+        TextView themeHint = text("保存后生效；取消或关闭会恢复原主题。仅用于曜屏内置面板。", 12, Color.rgb(99, 105, 101));
+        themeHint.setLineSpacing(dp(2), 1f);
+        themeHint.setPadding(dp(4), dp(10), dp(4), dp(2));
+        appearanceCard.addView(themeHint, matchWrap());
+        form.addView(appearanceCard, cardParams());
+
         form.addView(section("面板连接"), matchWrap());
+        Switch desktop = new Switch(this);
+        desktop.setText("曜屏电脑端 · 局域网联动");
+        desktop.setTextColor(INK);
+        desktop.setChecked(DesktopLinkService.enabled(this));
+        form.addView(desktop, matchWrap());
+        TextView desktopHint = text("手机和电脑连接同一局域网。在电脑设置中开启配对，输入地址和配对码。电脑醒着就亮屏，睡眠或关机后息屏；亮度跟随手机系统和自动亮度。", 12, Color.rgb(99, 105, 101));
+        desktopHint.setPadding(0, dp(8), 0, dp(12));
+        form.addView(desktopHint, matchWrap());
+        EditText computerAddress = input("电脑地址，例如 http://192.168.1.20:8080", p.getString(DesktopLinkService.KEY_URL, ""));
+        EditText pairCode = input("电脑设置中显示的 8 位配对码", "");
+        pairCode.setInputType(InputType.TYPE_CLASS_NUMBER);
+        Button pairButton = smallButton("配对此电脑");
+        TextView pairStatus = text("配对成功后点击底部保存。配对码不用于日常连接。", 12, Color.rgb(99, 105, 101));
+        String[] pairedAddress = { p.getString(DesktopLinkService.KEY_URL, "") };
+        String[] pairedToken = { p.getString(DesktopLinkService.KEY_TOKEN, "") };
+        form.addView(computerAddress, matchWrap()); form.addView(pairCode, matchWrap()); form.addView(pairButton, matchWrap()); form.addView(pairStatus, matchWrap());
+        pairButton.setOnClickListener(v -> {
+            String endpoint;
+            try { endpoint = LanAddress.normalize(computerAddress.getText().toString()); }
+            catch (IllegalArgumentException e) { computerAddress.setError(e.getMessage()); return; }
+            String code = pairCode.getText().toString().trim();
+            if (!code.matches("[0-9]{8}")) { pairCode.setError("请输入 8 位配对码"); return; }
+            pairButton.setEnabled(false); pairStatus.setText("正在连接电脑…");
+            new Thread(() -> {
+                try {
+                    String body = new org.json.JSONObject().put("code", code).toString();
+                    org.json.JSONObject result = new org.json.JSONObject(DesktopLinkService.request(endpoint + "/api/pair", null, body));
+                    String token = result.getString("token");
+                    if (!token.matches("[a-fA-F0-9]{64}")) throw new IllegalStateException("电脑返回的配对信息无效");
+                    runOnUiThread(() -> {
+                        if (isFinishing() || !dialog.isShowing()) return;
+                        pairedAddress[0] = endpoint; pairedToken[0] = token;
+                        computerAddress.setText(endpoint); pairStatus.setText("配对成功，点击保存即可连接。"); pairButton.setEnabled(true);
+                    });
+                } catch (Exception e) {
+                    runOnUiThread(() -> { if (!isFinishing() && dialog.isShowing()) { pairStatus.setText("配对失败，请检查地址、配对码及电脑防火墙。"); pairButton.setEnabled(true); } });
+                }
+            }, "panel-pairing").start();
+        });
+        Switch keepalive = new Switch(this);
+        keepalive.setText("充电时保持后台连接（兼容模式）"); keepalive.setTextColor(INK);
+        keepalive.setChecked(p.getBoolean(DesktopLinkService.KEY_KEEPALIVE, false));
+        form.addView(keepalive, matchWrap());
+        form.addView(text("默认节能运行。若手机实际息屏后不能及时恢复，可开启此项；只在充电且连接电脑时保持 CPU 唤醒，会增加耗电和发热。", 12, Color.rgb(99, 105, 101)), matchWrap());
+        Switch immediateLock = new Switch(this);
+        immediateLock.setText("息屏时立即锁屏（可选）"); immediateLock.setTextColor(INK);
+        immediateLock.setChecked(p.getBoolean(ScreenOffAdmin.KEY_IMMEDIATE, false) && ScreenOffAdmin.available(this));
+        immediateLock.setOnCheckedChangeListener((button, checked) -> {
+            if (checked && !ScreenOffAdmin.available(this)) {
+                immediateLock.setChecked(false);
+                Intent grant = new Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+                        .putExtra(android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN, new android.content.ComponentName(this, ScreenOffAdmin.class))
+                        .putExtra(android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION, "只用于在电脑睡眠或关机后立即关闭并锁定手机屏幕。授权后返回并开启此开关。");
+                startActivity(grant);
+            }
+        });
+        form.addView(immediateLock, matchWrap());
+        form.addView(text("未启用时沿用黑色遮罩与系统超时。立即锁屏需要系统授权，可能要求输入密码后才能进入其他应用；曜屏仍可在锁屏上展示。", 12, Color.rgb(99, 105, 101)), matchWrap());
+        int legacyStart = form.getChildCount();
         EditText home = input("AIDA64 面板地址", p.getString(ScheduleManager.KEY_HOME_URL, ScheduleManager.DEFAULT_HOME));
         form.addView(home, matchWrap());
 
@@ -496,25 +681,16 @@ public final class MainActivity extends Activity {
         holidayCard.addView(holidayTitle, matchWrap());
         holidayCard.addView(holidayStatus, matchWrap());
         form.addView(holidayCard, cardParams());
-
-        int initialBrightness = Math.round(p.getFloat(ScheduleManager.KEY_BRIGHTNESS, .85f) * 100);
-        TextView brightnessLabel = section(String.format(Locale.CHINA, "常亮亮度 · %d%%", initialBrightness));
-        form.addView(brightnessLabel, matchWrap());
-        LinearLayout brightnessCard = card(Color.WHITE);
-        SeekBar brightness = new SeekBar(this);
-        brightness.setMax(100);
-        brightness.setProgress(initialBrightness);
-        brightness.setProgressTintList(android.content.res.ColorStateList.valueOf(SIGNAL));
-        brightness.setThumbTintList(android.content.res.ColorStateList.valueOf(INK));
-        brightness.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar bar, int value, boolean user) {
-                brightnessLabel.setText(String.format(Locale.CHINA, "常亮亮度 · %d%%", Math.max(5, value)));
-            }
-            @Override public void onStartTrackingTouch(SeekBar bar) {}
-            @Override public void onStopTrackingTouch(SeekBar bar) {}
-        });
-        brightnessCard.addView(brightness, matchWrap());
-        form.addView(brightnessCard, cardParams());
+        int legacyEnd = form.getChildCount();
+        Runnable updateModeControls = () -> {
+            boolean legacy = !desktop.isChecked();
+            for (int i = legacyStart; i < legacyEnd; i++) form.getChildAt(i).setVisibility(legacy ? View.VISIBLE : View.GONE);
+            computerAddress.setEnabled(!legacy); pairCode.setEnabled(!legacy); pairButton.setEnabled(!legacy);
+            immediateLock.setEnabled(!legacy); keepalive.setEnabled(!legacy);
+            themePicker.setEnabled(!legacy); previewTheme.setEnabled(!legacy);
+        };
+        desktop.setOnCheckedChangeListener((button, checked) -> updateModeControls.run());
+        updateModeControls.run();
 
         LinearLayout actions = new LinearLayout(this);
         Button reload = smallButton("重新加载面板");
@@ -523,6 +699,8 @@ public final class MainActivity extends Activity {
         Button exact = smallButton(ScheduleManager.canScheduleExactly(this) ? "精确定时已开启" : "开启精确定时");
         styleOutlineButton(exact);
         exact.setEnabled(!ScheduleManager.canScheduleExactly(this));
+        exact.setVisibility(desktop.isChecked() ? View.GONE : View.VISIBLE);
+        desktop.setOnCheckedChangeListener((button, checked) -> { updateModeControls.run(); exact.setVisibility(checked ? View.GONE : View.VISIBLE); });
         exact.setOnClickListener(v -> requestExactAlarm());
         actions.addView(reload, new LinearLayout.LayoutParams(0, dp(48), 1f));
         actions.addView(new Space(this), new LinearLayout.LayoutParams(dp(8), 1));
@@ -536,6 +714,7 @@ public final class MainActivity extends Activity {
         shell.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         LinearLayout footer = new LinearLayout(this);
+        footer.setTag("control-footer");
         footer.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         footer.setPadding(dp(18), dp(12), dp(18), dp(16));
         footer.setBackground(bottomRounded(Color.rgb(242, 241, 235), 24));
@@ -553,17 +732,35 @@ public final class MainActivity extends Activity {
 
         save.setOnClickListener(v -> {
             String url = home.getText().toString().trim();
-            if (url.isEmpty()) { home.setError("请输入 AIDA64 面板地址"); return; }
+            if (!desktop.isChecked() && url.isEmpty()) { home.setError("请输入 AIDA64 面板地址"); return; }
+            if (desktop.isChecked()) {
+                String endpoint;
+                try { endpoint = LanAddress.normalize(computerAddress.getText().toString()); }
+                catch (IllegalArgumentException e) { computerAddress.setError(e.getMessage()); return; }
+                if (!endpoint.equals(pairedAddress[0]) || !pairedToken[0].matches("[a-fA-F0-9]{64}")) { pairStatus.setText("请先配对此电脑。"); return; }
+            }
             String normalized = normalizeUrl(url);
-            String previous = p.getString(ScheduleManager.KEY_HOME_URL, "");
             p.edit().putBoolean(KEY_CONFIGURED, true)
+                    .putBoolean(DesktopLinkService.KEY_ENABLED, desktop.isChecked())
+                    .putString(DesktopLinkService.KEY_URL, pairedAddress[0]).putString(DesktopLinkService.KEY_TOKEN, pairedToken[0])
+                    .putBoolean(ScreenOffAdmin.KEY_IMMEDIATE, immediateLock.isChecked())
+                    .putBoolean(DesktopLinkService.KEY_KEEPALIVE, keepalive.isChecked())
                     .putBoolean(ScheduleManager.KEY_ENABLED, enabled.isChecked())
                     .putString(ScheduleManager.KEY_HOME_URL, normalized)
                     .putInt(ScheduleManager.KEY_WORK_START, workStart[0]).putInt(ScheduleManager.KEY_WORK_END, workEnd[0])
                     .putInt(ScheduleManager.KEY_REST_START, restStart[0]).putInt(ScheduleManager.KEY_REST_END, restEnd[0])
-                    .putFloat(ScheduleManager.KEY_BRIGHTNESS, Math.max(5, brightness.getProgress()) / 100f)
+                    .putString(PanelTheme.KEY, PanelTheme.normalize(activeTheme))
                     .putLong(ScheduleManager.KEY_OVERRIDE_UNTIL, 0L).apply();
-            if (!normalized.equals(previous)) panel.loadUrl(normalized);
+            desktopPageReady = false;
+            if (desktop.isChecked()) {
+                panel.loadUrl(PanelTheme.url(activeTheme));
+                DesktopLinkService.reconnect();
+                DesktopLinkService.start(this);
+            } else {
+                stopService(new Intent(this, DesktopLinkService.class));
+                panel.resumeTimers();
+                panel.loadUrl(normalized);
+            }
             ScheduleManager.scheduleNext(this);
             applyScreenMode();
             dialog.dismiss();
@@ -572,6 +769,11 @@ public final class MainActivity extends Activity {
         dialog.setContentView(shell);
         dialog.setOnDismissListener(ignored -> {
             holidaySyncStatus = null;
+            controlDialog = null;
+            themePreview = false;
+            handler.removeCallbacks(restoreSettingsAfterPreview);
+            applyPanelTheme(prefs.getString(PanelTheme.KEY, "classic"));
+            applyScreenMode();
             enterImmersiveMode();
         });
         dialog.show();
@@ -580,28 +782,96 @@ public final class MainActivity extends Activity {
             window.setBackgroundDrawableResource(android.R.color.transparent);
             WindowManager.LayoutParams params = window.getAttributes();
             params.dimAmount = .72f;
+            window.setAttributes(params);
             window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            // A visible settings dialog stays usable even while the linked PC is asleep.
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-            int screenWidth = getResources().getDisplayMetrics().widthPixels;
-            int screenHeight = getResources().getDisplayMetrics().heightPixels;
-            window.setLayout(screenWidth - dp(28), Math.min(screenHeight - dp(54), dp(760)));
+            sizeControlPanel(dialog);
         }
+    }
+
+    private void bindThemeChoice(android.widget.CheckedTextView label, int position, boolean checked) {
+        String name = PanelTheme.NAMES[position];
+        android.text.SpannableString content = new android.text.SpannableString(name + "\n" + PanelTheme.DESCRIPTIONS[position]);
+        content.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), 0, name.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        content.setSpan(new android.text.style.RelativeSizeSpan(13f / 16f), name.length() + 1, content.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        content.setSpan(new android.text.style.ForegroundColorSpan(Color.rgb(99, 105, 101)), name.length() + 1, content.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        label.setText(content);
+        label.setTextColor(INK);
+        label.setTextSize(16);
+        label.setSingleLine(false);
+        label.setEllipsize(null);
+        label.setHorizontallyScrolling(false);
+        label.setGravity(Gravity.CENTER_VERTICAL);
+        label.setLineSpacing(dp(3), 1f);
+        label.setPadding(dp(16), dp(12), dp(16), dp(12));
+        label.setMinHeight(dp(80));
+        android.content.res.TypedArray choiceStyle = obtainStyledAttributes(new int[] { android.R.attr.listChoiceIndicatorSingle });
+        try { label.setCheckMarkDrawable(choiceStyle.getDrawable(0)); }
+        finally { choiceStyle.recycle(); }
+        label.setCheckMarkTintList(android.content.res.ColorStateList.valueOf(INK));
+        label.setChecked(checked);
+        label.setBackgroundColor(checked ? Color.rgb(237, 242, 223) : Color.WHITE);
+        label.setLayoutParams(new android.widget.AbsListView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+    }
+
+    private void sizeControlPanel(Dialog dialog) {
+        Window window = dialog.getWindow();
+        if (window == null) return;
+        android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
+        boolean shortScreen = metrics.heightPixels / metrics.density < 480;
+        View decor = window.getDecorView();
+        View header = decor.findViewWithTag("control-header");
+        View footer = decor.findViewWithTag("control-footer");
+        View eyebrow = decor.findViewWithTag("control-eyebrow");
+        TextView title = decor.findViewWithTag("control-title");
+        if (header != null) header.setPadding(dp(22), dp(shortScreen ? 8 : 17), dp(14), dp(shortScreen ? 8 : 17));
+        if (footer != null) footer.setPadding(dp(18), dp(shortScreen ? 8 : 12), dp(18), dp(shortScreen ? 8 : 16));
+        if (eyebrow != null) eyebrow.setVisibility(shortScreen ? View.GONE : View.VISIBLE);
+        if (title != null) title.setTextSize(shortScreen ? 20 : 23);
+        window.setLayout(Math.min(metrics.widthPixels - dp(28), dp(600)),
+                Math.min(metrics.heightPixels - dp(shortScreen ? 20 : 54), dp(760)));
     }
 
     private void applyScreenMode() {
         if (sleepOverlay == null) return;
-        boolean off = ScheduleManager.isOff(this, System.currentTimeMillis());
-        WindowManager.LayoutParams params = getWindow().getAttributes();
+        boolean off = !themePreview && ScheduleManager.isOff(this, System.currentTimeMillis());
+        boolean desktop = DesktopLinkService.enabled(this);
         if (off) {
+            if (Build.VERSION.SDK_INT >= 27) setTurnScreenOn(false);
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            params.screenBrightness = 0f;
             sleepOverlay.setVisibility(View.VISIBLE);
         } else {
-            params.screenBrightness = Math.max(.05f, prefs.getFloat(ScheduleManager.KEY_BRIGHTNESS, .85f));
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             sleepOverlay.setVisibility(View.GONE);
         }
-        getWindow().setAttributes(params);
+        if (desktop) {
+            batteryIndicator.setVisibility(View.GONE);
+            if (off) { panel.evaluateJavascript("window.PanelDeck && PanelDeck.pause(true)", null); panel.pauseTimers(); }
+            else { panel.resumeTimers(); panel.evaluateJavascript("window.PanelDeck && PanelDeck.pause(false)", null); }
+        } else batteryIndicator.setVisibility(View.VISIBLE);
+    }
+
+    private void updateDesktopPanel() {
+        if (panel == null || !DesktopLinkService.enabled(this) || !PanelTheme.isLocalUrl(panel.getUrl()) || !desktopPageReady) return;
+        if (!themePreview && "off".equals(DesktopLinkService.screenMode())) return;
+        String json = DesktopLinkService.json();
+        if (json == null) panel.evaluateJavascript("window.PanelDeck && PanelDeck.offline()", null);
+        else panel.evaluateJavascript("window.PanelDeck && PanelDeck.update(" + json + ")", null);
+        Intent battery = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        if (battery != null) {
+            int level = battery.getIntExtra(BatteryManager.EXTRA_LEVEL, 0) * 100 / Math.max(1, battery.getIntExtra(BatteryManager.EXTRA_SCALE, 100));
+            boolean charging = battery.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0;
+            panel.evaluateJavascript("window.PanelDeck && PanelDeck.battery(" + level + "," + charging + ")", null);
+        }
+    }
+
+    private void applyPanelTheme(String theme) {
+        activeTheme = PanelTheme.normalize(theme);
+        if (panel == null || !desktopPageReady || !PanelTheme.isLocalUrl(panel.getUrl())) return;
+        panel.evaluateJavascript("window.PanelDeck && PanelDeck.setTheme('" + activeTheme + "')", null);
     }
 
     @SuppressWarnings("deprecation")
@@ -619,13 +889,14 @@ public final class MainActivity extends Activity {
         prepareWakeWindow();
         applyScreenMode();
         KeyguardManager keyguard = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
-        if (Build.VERSION.SDK_INT >= 26 && keyguard != null && keyguard.isKeyguardLocked()) {
+        if (keyguard != null && keyguard.isKeyguardLocked() && !keyguard.isDeviceSecure()) {
             keyguard.requestDismissKeyguard(this, null);
         }
         ScheduleManager.scheduleNext(this);
     }
 
     private String scheduleSummary() {
+        if (DesktopLinkService.enabled(this)) return DesktopLinkService.status();
         long now = System.currentTimeMillis();
         boolean off = ScheduleManager.isOff(this, now);
         long next = ScheduleManager.nextChange(this, now);

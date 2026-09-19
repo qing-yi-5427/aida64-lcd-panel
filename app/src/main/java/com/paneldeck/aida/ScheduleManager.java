@@ -27,10 +27,7 @@ final class ScheduleManager {
     static final String KEY_REST_END = "rest_end";
     static final String KEY_HOLIDAYS = "holiday_dates";
     static final String KEY_WORKDAYS = "special_workdays";
-    static final String KEY_BRIGHTNESS = "screen_brightness";
     static final String KEY_OVERRIDE_UNTIL = "override_until";
-    static final String KEY_DESKTOP = "desktop_mode";
-    static final String KEY_FULLSCREEN = "fullscreen_mode";
     static final String KEY_SCHEDULE_MODE = "schedule_mode";
     static final String DEFAULT_HOME = "http://192.168.1.100:8080/";
 
@@ -47,14 +44,15 @@ final class ScheduleManager {
     static void ensureDefaults(Context context) {
         SharedPreferences p = prefs(context);
         SharedPreferences.Editor edit = p.edit();
+        // Remove retired display controls while retaining pairing and schedule preferences.
+        edit.remove("screen_brightness").remove("desktop_mode").remove("fullscreen_mode");
         if (!p.contains(KEY_ENABLED)) {
             edit.putBoolean(KEY_ENABLED, true)
                     .putString(KEY_HOME_URL, DEFAULT_HOME)
                     .putInt(KEY_WORK_START, 2 * 60)
                     .putInt(KEY_WORK_END, 20 * 60 + 30)
                     .putInt(KEY_REST_START, 2 * 60)
-                    .putInt(KEY_REST_END, 8 * 60)
-                    .putFloat(KEY_BRIGHTNESS, 0.85f);
+                    .putInt(KEY_REST_END, 8 * 60);
         }
         // Version 2 changes the configured intervals from "screen off" to "screen on".
         if (p.getInt(KEY_SCHEDULE_MODE, 1) < 2) {
@@ -65,6 +63,7 @@ final class ScheduleManager {
     }
 
     static boolean isOff(Context context, long atMillis) {
+        if (DesktopLinkService.enabled(context)) return "off".equals(DesktopLinkService.screenMode());
         SharedPreferences p = prefs(context);
         if (!p.getBoolean(KEY_ENABLED, true)) return false;
         if (p.getLong(KEY_OVERRIDE_UNTIL, 0L) > atMillis) return false;
@@ -122,6 +121,7 @@ final class ScheduleManager {
         PendingIntent wakePending = PendingIntent.getActivity(context, REQUEST_WAKE, wakeIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         alarms.cancel(wakePending);
+        if (DesktopLinkService.enabled(context)) return;
         long next = nextChange(context, System.currentTimeMillis());
         if (next == 0L) return;
         // A user-visible alarm clock is the most reliable non-root wake path through Doze and OEM power savers.

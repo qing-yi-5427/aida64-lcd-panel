@@ -10,6 +10,10 @@ public final class BootReceiver extends BroadcastReceiver {
         ScheduleManager.ensureDefaults(context);
         HolidaySync.ensureOfflineData(context);
         ScheduleManager.scheduleNext(context);
+        if (DesktopLinkService.enabled(context)) {
+            try { DesktopLinkService.start(context); } catch (Exception ignored) { }
+            return;
+        }
         PendingResult pending = goAsync();
         HolidaySync.syncAsync(context, false, updated -> {
             if (updated) ScheduleManager.scheduleNext(context);

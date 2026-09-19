@@ -1,0 +1,87 @@
+/* Night desk: a quiet clock above compact horizontal hardware bands. */
+body[data-theme="ambient"]{--bg:#080e12;--surface:#0d151a;--text:#c4d1d1;--muted:#81999e;--line:#25343b;--track:#1d2d34;--cpu:#b9cbb8;--gpu:#96bfc9;--radius:0;--gap:30px;color-scheme:dark;font-family:"Roboto","Segoe UI",Arial,sans-serif}
+body[data-theme="ambient"] #panel{padding:42px 54px;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:48px minmax(500px,1fr) 172px 620px 228px var(--footer-height);gap:30px;background:var(--bg)}
+body[data-theme="ambient"] .connection{height:auto;font-size:27px;color:var(--muted)}
+body[data-theme="ambient"] header{padding:24px 0 48px;border:0;display:flex;flex-direction:column;justify-content:center;text-align:center}
+body[data-theme="ambient"] .eyebrow{font-size:32px;letter-spacing:3px;color:var(--muted);font-weight:500;margin:0 0 56px}
+body[data-theme="ambient"] .eyebrow span{font-size:23px;letter-spacing:5px;color:var(--muted);margin-left:20px}
+body[data-theme="ambient"] .time-row{display:block}
+body[data-theme="ambient"] #clock{font-size:306px;font-weight:300;letter-spacing:-13px;line-height:1.05;color:var(--text)}
+body[data-theme="ambient"] #clock span{font-size:.25em;letter-spacing:-2px;margin-left:10px;color:var(--muted)}
+body[data-theme="ambient"] .date{display:flex;align-items:baseline;justify-content:center;gap:30px;text-align:center;padding:0;margin-top:32px;line-height:1.4}
+body[data-theme="ambient"] .date b{font-size:30px;font-weight:400;letter-spacing:5px;color:var(--cpu)}
+body[data-theme="ambient"] .date div{font-size:29px;color:var(--muted)}
+body[data-theme="ambient"] .power{height:auto;gap:40px;border-top:2px solid var(--line);padding-top:24px}
+body[data-theme="ambient"] .power-cell{padding:0 8px;border:0;border-radius:0;background:transparent;display:flex;justify-content:space-between;align-items:center;gap:16px}
+body[data-theme="ambient"] .power-cell:before{display:none}
+body[data-theme="ambient"] .power-cell label{font-size:27px;letter-spacing:2px;max-width:136px;line-height:1.45;color:var(--muted)}
+body[data-theme="ambient"] .reading{display:flex;align-items:baseline;justify-content:flex-start;gap:7px;min-height:0;height:auto;width:100%;margin:0;line-height:1.12}
+body[data-theme="ambient"] .reading strong{font-size:66px;font-weight:400;line-height:1.12;letter-spacing:-2px}
+body[data-theme="ambient"] .reading small{font-size:26px;line-height:1.12;font-weight:400;letter-spacing:0}
+body[data-theme="ambient"] .power-cell .reading{width:auto;margin:0;height:auto}
+body[data-theme="ambient"] .power-cell .reading strong{font-size:80px;letter-spacing:-3px;font-weight:300}
+body[data-theme="ambient"] .power-cell .reading small{font-size:29px}
+body[data-theme="ambient"] .processors{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:repeat(2,minmax(0,1fr));gap:24px;min-height:0}
+body[data-theme="ambient"] .processor{padding:22px 24px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:52px 64px minmax(0,1fr);column-gap:22px;border:0;border-radius:18px;background:var(--surface)}
+body[data-theme="ambient"] .processor-head{grid-column:1/-1;padding:0;justify-content:flex-start;gap:20px}
+body[data-theme="ambient"] .processor-head b{font-size:38px;letter-spacing:2px;font-weight:500;color:var(--accent)}
+body[data-theme="ambient"] .processor-head span{font-size:22px;letter-spacing:3px;color:var(--muted)}
+body[data-theme="ambient"] .model{grid-column:1/-1;padding:0;font-size:27px;line-height:1.2;-webkit-line-clamp:2;color:var(--muted)}
+body[data-theme="ambient"] .util,body[data-theme="ambient"] .stat{padding:14px 0 0;margin:0;border:0;display:flex;flex-direction:column;justify-content:center;gap:13px;min-width:0}
+body[data-theme="ambient"] .util label,body[data-theme="ambient"] .stat label{font-size:23px;line-height:1.25;letter-spacing:1px;color:var(--muted)}
+body[data-theme="ambient"] .util-row{display:block;margin:0;width:100%}
+body[data-theme="ambient"] .util .reading,body[data-theme="ambient"] .stat .reading{height:auto;gap:7px}
+body[data-theme="ambient"] .util .reading strong,body[data-theme="ambient"] .stat .reading strong{font-size:65px;line-height:1.12;letter-spacing:-2px;font-weight:400}
+body[data-theme="ambient"] .util .reading small{font-size:26px}
+body[data-theme="ambient"] .ring{display:none}
+body[data-theme="ambient"] .memory{height:auto;gap:48px;padding:20px 8px 0}
+body[data-theme="ambient"] .memory-cell{padding:0;border:0;border-radius:0;background:transparent}
+body[data-theme="ambient"] .memory-head{min-height:40px}
+body[data-theme="ambient"] .memory-head label{font-size:28px;letter-spacing:3px;font-weight:400;color:var(--muted)}
+body[data-theme="ambient"] .memory-head b{font-size:31px;font-weight:400;color:var(--accent)}
+body[data-theme="ambient"] .used.reading{height:92px;margin:12px 0 13px}
+body[data-theme="ambient"] .used.reading strong{font-size:78px;font-weight:300}
+body[data-theme="ambient"] .used.reading small{font-size:28px}
+body[data-theme="ambient"] .track{height:6px;border-radius:6px}
+body[data-theme="ambient"] footer{height:auto;font-size:26px;color:var(--muted)}
+body[data-theme="ambient"] footer #freshness{font-weight:400}
+body[data-theme="ambient"].compact #panel{padding:34px 48px;gap:26px;grid-template-rows:48px minmax(460px,1fr) 160px 592px 218px var(--footer-height)}
+body[data-theme="ambient"].compact header{padding:16px 0 32px}
+body[data-theme="ambient"].compact .eyebrow{margin-bottom:38px}
+body[data-theme="ambient"].compact #clock{font-size:292px}
+body[data-theme="ambient"].compact .processor{grid-template-rows:48px 60px minmax(0,1fr);padding:20px 24px}
+body[data-theme="ambient"].compact .model{font-size:26px}
+body[data-theme="ambient"].compact .util{padding-top:14px;padding-bottom:0}
+/* Clock on the left; two horizontal hardware bands and a utility shelf on the right. */
+body[data-theme="ambient"].landscape #panel{grid-template-columns:780px minmax(0,1fr) minmax(0,1fr);grid-template-rows:44px minmax(0,1fr) 172px var(--footer-height);gap:28px 36px;padding:40px 48px}
+body[data-theme="ambient"].landscape .connection{grid-column:1/-1;grid-row:1;font-size:25px}
+body[data-theme="ambient"].landscape header{grid-column:1;grid-row:2/4;min-height:0;padding:16px 25px 40px 0;border-right:2px solid var(--line);text-align:left}
+body[data-theme="ambient"].landscape .eyebrow{font-size:32px;margin-bottom:62px;letter-spacing:2px}
+body[data-theme="ambient"].landscape .eyebrow span{font-size:22px;letter-spacing:3px;margin-left:16px}
+body[data-theme="ambient"].landscape #clock{font-size:245px;letter-spacing:-10px}
+body[data-theme="ambient"].landscape #clock span{display:block;font-size:58px;letter-spacing:-1px;margin:24px 0 0}
+body[data-theme="ambient"].landscape .date{display:block;text-align:left;margin-top:54px}
+body[data-theme="ambient"].landscape .date b{font-size:29px;letter-spacing:4px}
+body[data-theme="ambient"].landscape .date div{font-size:27px;margin-top:12px}
+body[data-theme="ambient"].landscape .processors{grid-column:2/4;grid-row:2;gap:24px}
+body[data-theme="ambient"].landscape .processor{padding:20px 22px;grid-template-rows:48px 58px minmax(0,1fr);column-gap:22px}
+body[data-theme="ambient"].landscape .processor-head b{font-size:36px}
+body[data-theme="ambient"].landscape .model{font-size:24px}
+body[data-theme="ambient"].landscape .util,body[data-theme="ambient"].landscape .stat{padding:10px 0 0;gap:10px}
+body[data-theme="ambient"].landscape .util label,body[data-theme="ambient"].landscape .stat label{font-size:22px;letter-spacing:.5px}
+body[data-theme="ambient"].landscape .util .reading strong,body[data-theme="ambient"].landscape .stat .reading strong{font-size:61px}
+body[data-theme="ambient"].landscape .reading small,body[data-theme="ambient"].landscape .util .reading small{font-size:24px}
+body[data-theme="ambient"].landscape .power{grid-column:2;grid-row:3;gap:24px;border:0;padding:8px 0 0}
+body[data-theme="ambient"].landscape .power-cell{display:block;padding:0}
+body[data-theme="ambient"].landscape .power-cell label{font-size:22px;letter-spacing:.5px;max-width:none;white-space:nowrap}
+body[data-theme="ambient"].landscape .power-cell .reading{margin-top:14px}
+body[data-theme="ambient"].landscape .power-cell .reading strong{font-size:64px}
+body[data-theme="ambient"].landscape .power-cell .reading small{font-size:25px}
+body[data-theme="ambient"].landscape .memory{grid-column:3;grid-row:3;gap:28px;padding:8px 0 0}
+body[data-theme="ambient"].landscape .memory-head{min-height:32px;gap:7px}
+body[data-theme="ambient"].landscape .memory-head label{font-size:23px;letter-spacing:1px}
+body[data-theme="ambient"].landscape .memory-head b{font-size:26px}
+body[data-theme="ambient"].landscape .used.reading{height:76px;margin:12px 0 10px}
+body[data-theme="ambient"].landscape .used.reading strong{font-size:64px}
+body[data-theme="ambient"].landscape .used.reading small{font-size:25px}
+body[data-theme="ambient"].landscape footer{grid-column:1/-1;grid-row:4;font-size:24px}
