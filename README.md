@@ -39,7 +39,7 @@ PC 输出到 `artifacts/PanelDeck-Desktop-Lite/`，APK 输出到 `app/build/outp
 
 ## 旧版 AIDA64 网页面板模式
 
-以下为仍保留的兼容模式，可在手机设置中切回。原始 `.rslcd` 模板与 `design-previews/` 是历史设计参考。
+以下为仍保留的兼容模式，可在手机设置中切回。原始 `.rslcd` 模板仍保留，过时的设计预览已清理。
 
 一个面向闲置 Android 手机的 AIDA64 RemoteSensor 专用全屏显示器。它按工作日、周末和中国大陆法定节假日自动控制面板常亮/息屏。
 
