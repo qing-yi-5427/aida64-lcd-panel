@@ -47,6 +47,7 @@ public final class DesktopLinkService extends Service {
     private final Semaphore retry = new Semaphore(0);
     private volatile int generation;
     private volatile boolean pairingInvalid;
+    private boolean retryTheme;
     private ConnectivityManager connectivity;
     private final ConnectivityManager.NetworkCallback networks = new ConnectivityManager.NetworkCallback() {
         @Override public void onAvailable(Network network) { interruptConnection(); }
@@ -72,6 +73,15 @@ public final class DesktopLinkService extends Service {
         if (s != null) s.interruptConnection();
     }
     static void start(Context c) { c.startForegroundService(new Intent(c, DesktopLinkService.class)); }
+    static String saveTheme(SharedPreferences prefs, String selected, String original) {
+        synchronized (PanelTheme.class) {
+            // Saving unrelated settings must not overwrite a theme changed on the PC.
+            if (selected.equals(original)) return PanelTheme.normalize(prefs.getString(PanelTheme.KEY, "classic"));
+            String theme = PanelTheme.normalize(selected);
+            prefs.edit().putString(PanelTheme.KEY, theme).putString(PanelTheme.PENDING, theme).apply();
+            return theme;
+        }
+    }
     static void reconnect() {
         DesktopLinkService s = instance;
         latest = null; lastSeen = 0; status = "正在重新连接";
@@ -130,6 +140,12 @@ public final class DesktopLinkService extends Service {
         String proposed = DesktopScreenPolicy.decide(pc.getBoolean("suspended"), pc.getBoolean("manualOff"));
         data.getJSONObject("screen").put("mode", proposed);
         if (expectedGeneration != generation || destroyed) return;
+        synchronized (PanelTheme.class) {
+            SharedPreferences prefs = ScheduleManager.prefs(this);
+            String theme = data.optString("panelTheme", "");
+            if (PanelTheme.isKnown(theme) && !prefs.contains(PanelTheme.PENDING) &&
+                    !theme.equals(prefs.getString(PanelTheme.KEY, "classic"))) prefs.edit().putString(PanelTheme.KEY, theme).apply();
+        }
         mode = proposed; latest = data.toString(); lastSeen = SystemClock.elapsedRealtime(); status = "电脑已连接";
         handler.post(() -> { if (expectedGeneration == generation && !destroyed) applyMode(true); });
     }
@@ -151,6 +167,7 @@ public final class DesktopLinkService extends Service {
                 String base = LanAddress.normalize(p.getString(KEY_URL, ""));
                 String token = p.getString(KEY_TOKEN, "");
                 if (!token.matches("[a-fA-F0-9]{64}")) { pairingInvalid = true; throw new IllegalStateException("请先在设置中配对电脑"); }
+                syncThemeSafely(base, token, attempt);
                 if (requestHold) { request(base + "/api/phone/hold", token, null); requestHold = false; }
                 HttpURLConnection connection = connection(base + "/api/phone/events" + batteryQuery(), token);
                 activeConnection = connection; connection.setReadTimeout(15000);
@@ -169,6 +186,7 @@ public final class DesktopLinkService extends Service {
                             if (now - opened > 10000) failures = 0;
                             if (now >= nextStatus) {
                                 request(base + "/api/phone/status" + batteryQuery(), token, null);
+                                if (retryTheme) syncThemeSafely(base, token, attempt);
                                 nextStatus = now + 10000;
                             }
                         }
@@ -187,6 +205,44 @@ public final class DesktopLinkService extends Service {
                 } catch (InterruptedException e) { return; }
             }
         }
+    }
+    private void syncThemeSafely(String base, String token, int expectedGeneration) throws Exception {
+        try { syncTheme(base, token, expectedGeneration); retryTheme = false; }
+        catch (Exception error) {
+            if (pairingInvalid) throw error;
+            // Optional appearance must never prevent hardware or power-state updates.
+            retryTheme = true;
+            android.util.Log.w("PanelDeckLink", "Theme sync deferred: " + error.getClass().getSimpleName());
+        }
+    }
+    private void syncTheme(String base, String token, int expectedGeneration) throws Exception {
+        SharedPreferences prefs = ScheduleManager.prefs(this);
+        String pending, selected;
+        synchronized (PanelTheme.class) {
+            pending = prefs.getString(PanelTheme.PENDING, "");
+            selected = PanelTheme.normalize(pending.isEmpty() ? prefs.getString(PanelTheme.KEY, "classic") : pending);
+        }
+        HttpURLConnection c = connection(base + "/api/phone/theme", token);
+        c.setRequestMethod("POST"); c.setDoOutput(true); c.setRequestProperty("Content-Type", "application/json");
+        try {
+            byte[] body = new JSONObject().put("theme", selected).put("initialize", pending.isEmpty()).toString().getBytes(StandardCharsets.UTF_8);
+            try (java.io.OutputStream out = c.getOutputStream()) { out.write(body); }
+            int code = c.getResponseCode();
+            if (code == 404) return; // Old PC versions retain local-only theme selection.
+            if (code == 401) { pairingInvalid = true; throw new IllegalStateException("配对已失效，请重新配对"); }
+            if (code != 200) throw new java.io.IOException("Theme sync unavailable");
+            try (InputStream in = c.getInputStream()) {
+                byte[] bytes = new byte[1025]; int count = 0, n;
+                while (count < bytes.length && (n = in.read(bytes, count, bytes.length - count)) != -1) count += n;
+                if (count > 1024) throw new java.io.IOException("Invalid theme response");
+                String theme = new JSONObject(new String(bytes, 0, count, StandardCharsets.UTF_8)).optString("theme", "");
+                if (!PanelTheme.isKnown(theme)) throw new java.io.IOException("Unknown theme");
+                synchronized (PanelTheme.class) {
+                    if (destroyed || expectedGeneration != generation || !pending.equals(prefs.getString(PanelTheme.PENDING, ""))) return;
+                    prefs.edit().putString(PanelTheme.KEY, theme).remove(PanelTheme.PENDING).apply();
+                }
+            }
+        } finally { c.disconnect(); }
     }
     private static HttpURLConnection connection(String url, String token) throws Exception {
         HttpURLConnection c = (HttpURLConnection)new URL(url).openConnection();

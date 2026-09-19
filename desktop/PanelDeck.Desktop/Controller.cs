@@ -13,6 +13,8 @@ public sealed class Controller : IDisposable
     private LanServer? server;
     private readonly SessionCollector sessionCollector = new();
     private readonly NetworkMonitor networkMonitor = new();
+    private readonly SemaphoreSlim settingsGate = new(1, 1);
+    private readonly Action<Settings> persist;
     private int authorizing;
     private int disposed;
     public bool AuthorizationPending => Volatile.Read(ref authorizing) != 0;
@@ -38,18 +40,21 @@ public sealed class Controller : IDisposable
     private volatile bool phoneCharging;
     private volatile Snapshot snapshot;
     private IReadOnlyList<Reading> readings = Array.Empty<Reading>();
-    public Snapshot Current => snapshot;
+    public Snapshot Current {
+        get { var current = snapshot; var theme = settings.PanelTheme; return current.PanelTheme == theme ? current : current with { PanelTheme = theme }; }
+    }
     public IReadOnlyList<Reading> Readings => readings;
     public int PhoneBattery => phoneBattery;
     public bool PhoneCharging => phoneCharging;
     public bool PhoneOnline => Environment.TickCount64 - Interlocked.Read(ref phoneSeen) < 25000;
     public string? Error { get; private set; }
     public string CollectorStatus { get; private set; } = "正在检测采集服务";
-    public Controller(Settings value, Func<Settings, CancellationToken, Task<HardwareFrame>>? sampleOverride = null) {
+    public Controller(Settings value, Func<Settings, CancellationToken, Task<HardwareFrame>>? sampleOverride = null, Action<Settings>? persist = null) {
         settings = value;
+        this.persist = persist ?? (next => next.Save());
         this.sampleOverride = sampleOverride;
         snapshot = new(0, Environment.MachineName, new("on", "正在启动"), "CPU", "GPU", new(), null,
-            new(false, false));
+            new(false, false), PanelTheme: value.PanelTheme);
     }
     public void Auto() { manualOff = false; }
     public void Off() { manualOff = true; }
@@ -65,13 +70,29 @@ public sealed class Controller : IDisposable
             .Where(ip => ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && LanServer.IsLocalNetwork(ip))
             .Select(ip => $"http://{ip}:{Settings.Port}").Distinct().ToArray();
     }
+    public string PreviewUrl(string? theme = null, bool landscape = false) =>
+        $"http://127.0.0.1:{Settings.Port}" + PanelThemes.PreviewPath(theme, landscape);
+    public async Task<string> ChangePanelTheme(string theme, bool initialize = false) {
+        if (!PanelThemes.IsKnown(theme)) throw new ArgumentException("未知面板主题。", nameof(theme));
+        await settingsGate.WaitAsync();
+        try {
+            if ((initialize && settings.PanelTheme.Length > 0) || settings.PanelTheme == theme) return settings.PanelTheme;
+            var next = settings.Copy(); next.PanelTheme = theme;
+            persist(next); settings = next;
+            return theme;
+        } finally { settingsGate.Release(); }
+    }
     private async Task StartServer() {
-        var next = new LanServer(Settings.ListenAddress, Settings.Port, () => snapshot, () => Settings.Token, Pairing,
-            (battery, charging) => { phoneBattery = battery; phoneCharging = charging; Interlocked.Exchange(ref phoneSeen, Environment.TickCount64); }, Auto);
+        var next = new LanServer(Settings.ListenAddress, Settings.Port, () => Current, () => Settings.Token, Pairing,
+            (battery, charging) => { phoneBattery = battery; phoneCharging = charging; Interlocked.Exchange(ref phoneSeen, Environment.TickCount64); }, Auto, ChangePanelTheme);
         try { await next.Start(); server = next; Error = null; }
         catch { await next.DisposeAsync(); throw; }
     }
-    public async Task ApplySettings(Settings next) {
+    public async Task ApplySettings(Settings next, string? selectedTheme = null) {
+        await settingsGate.WaitAsync();
+        try {
+        // A settings window may have been open while the phone changed its theme.
+        next.PanelTheme = selectedTheme ?? settings.PanelTheme;
         next.Validate();
         var old = settings;
         bool networkChanged = old.Port != next.Port || old.ListenAddress != next.ListenAddress || server == null;
@@ -80,7 +101,7 @@ public sealed class Controller : IDisposable
         try {
             if (networkChanged) await StartServer();
             StartupRegistration.Set(next.StartWithWindows);
-            next.Save();
+            persist(next);
             RequestSample();
         } catch {
             if (networkChanged && server != null) { await server.DisposeAsync(); server = null; }
@@ -89,6 +110,7 @@ public sealed class Controller : IDisposable
             if (networkChanged) try { await StartServer(); } catch (Exception ex) { Error = "连接服务未启动：" + ex.Message; }
             throw;
         }
+        } finally { settingsGate.Release(); }
     }
     public async Task Start() {
         try { await StartServer(); }
@@ -97,14 +119,17 @@ public sealed class Controller : IDisposable
             string lastMode = ""; bool wasOnline = false;
             HardwareFrame? lastFrame = null;
             bool? lastSuspended = null, lastManual = null;
+            string? lastTheme = null;
             try {
                 while (!stop.IsCancellationRequested) {
                     var reading = frame;
                     bool sleeping = suspended, manual = manualOff, online = PhoneOnline;
-                    if (!ReferenceEquals(lastFrame, reading) || lastSuspended != sleeping || lastManual != manual) {
+                    var theme = settings.PanelTheme;
+                    if (!ReferenceEquals(lastFrame, reading) || lastSuspended != sleeping || lastManual != manual || lastTheme != theme) {
                         snapshot = new(reading.Timestamp, Environment.MachineName, ScreenPolicy.Decide(sleeping, manual), reading.Cpu, reading.Gpu, reading.Metrics, reading.Warning,
-                            new PcState(sleeping, manual));
+                            new PcState(sleeping, manual), PanelTheme: theme);
                         lastFrame = reading; lastSuspended = sleeping; lastManual = manual;
+                        lastTheme = theme;
                     }
                     if ((lastMode == "off" && snapshot.Screen.Mode != "off") || (!wasOnline && online)) RequestSample();
                     wasOnline = online; lastMode = snapshot.Screen.Mode;

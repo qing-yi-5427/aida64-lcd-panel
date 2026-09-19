@@ -18,7 +18,7 @@ public static class DesktopPreview
         Require(Math.Abs(main.ClientSize.Height - 812 * main.DeviceDpi / 96f) <= 2, "Main vertical DPI baseline lost");
         main.Size = main.MinimumSize;
         Capture(main, Path.Combine(directory, "desktop-minimum.png"));
-        for (int page = 0; page < 4; page++) {
+        for (int page = 0; page < 5; page++) {
             using var settings = new SettingsForm(controller); settings.SelectPage(page);
             Capture(settings, Path.Combine(directory, $"settings-runtime-{page}.png"));
         }

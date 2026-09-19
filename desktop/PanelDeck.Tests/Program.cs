@@ -41,7 +41,9 @@ var code = window.Open();
 var token = new string('a', 64);
 var frame = new Snapshot(100, "TEST", new("on", "testing"), "CPU", "GPU", new(), null, new(false, false));
 int holds = 0, reports = 0;
-await using var server = new LanServer("127.0.0.1", 0, () => frame, () => token, window, (_, _) => Interlocked.Increment(ref reports), () => Interlocked.Increment(ref holds));
+await using var server = new LanServer("127.0.0.1", 0, () => frame, () => token, window, (_, _) => Interlocked.Increment(ref reports), () => Interlocked.Increment(ref holds), (theme, initialize) => {
+    frame = frame with { PanelTheme = theme }; return Task.FromResult(theme);
+});
 await server.Start();
 using var client = new HttpClient { BaseAddress = new Uri(server.Address), Timeout = TimeSpan.FromSeconds(5) };
 foreach (var theme in new[] { "editorial", "ambient", "telemetry", "studio" }) {
@@ -51,6 +53,10 @@ foreach (var theme in new[] { "editorial", "ambient", "telemetry", "studio" }) {
 }
 Assert((await client.GetAsync("/api/phone/snapshot")).StatusCode == System.Net.HttpStatusCode.Unauthorized, "Snapshot requires token");
 Assert((await client.PostAsync("/api/phone/hold", null)).StatusCode == System.Net.HttpStatusCode.Unauthorized, "Control requires token");
+Assert((await client.PostAsync("/api/phone/theme", null)).StatusCode == System.Net.HttpStatusCode.Unauthorized, "Theme changes require pairing token");
+Assert(PanelThemes.PreviewPath().Contains("orientation=portrait") && !PanelThemes.PreviewPath().Contains("theme="), "Dashboard preview follows saved phone theme at portrait ratio");
+Assert(!PanelThemes.PreviewPath("<script>").Contains("theme="), "Preview rejects unknown theme IDs");
+foreach (var path in new[] { "/preview", "/preview.js", "/preview.css", "/network.css" }) Assert((await client.GetAsync(path)).IsSuccessStatusCode, "Preview resource available: " + path);
 using var paired = await client.PostAsync("/api/pair", new StringContent(System.Text.Json.JsonSerializer.Serialize(new { code }), System.Text.Encoding.UTF8, "application/json"));
 Assert(paired.IsSuccessStatusCode && (await paired.Content.ReadAsStringAsync()).Contains(token), "HTTP pairing exchanges code for token");
 using var invalidJson = await client.PostAsync("/api/pair", new StringContent("{broken", System.Text.Encoding.UTF8, "application/json"));
@@ -58,6 +64,12 @@ Assert(invalidJson.StatusCode == System.Net.HttpStatusCode.BadRequest, "Invalid 
 using var tooBig = await client.PostAsync("/api/pair", new StringContent(new string('x', 2048), System.Text.Encoding.UTF8, "application/json"));
 Assert(tooBig.StatusCode == System.Net.HttpStatusCode.RequestEntityTooLarge, "Oversized pairing request rejected");
 client.DefaultRequestHeaders.Authorization = new("Bearer", token);
+using var badTheme = await client.PostAsync("/api/phone/theme", new StringContent("{\"theme\":\"../../bad\"}", System.Text.Encoding.UTF8, "application/json"));
+Assert(badTheme.StatusCode == System.Net.HttpStatusCode.BadRequest && frame.PanelTheme == null, "Invalid theme cannot alter saved selection");
+using var malformedTheme = await client.PostAsync("/api/phone/theme", new StringContent("{broken", System.Text.Encoding.UTF8, "application/json"));
+Assert(malformedTheme.StatusCode == System.Net.HttpStatusCode.BadRequest, "Malformed theme payload is rejected");
+using var themeResponse = await client.PostAsync("/api/phone/theme", new StringContent("{\"theme\":\"glass\",\"initialize\":true}", System.Text.Encoding.UTF8, "application/json"));
+Assert(themeResponse.IsSuccessStatusCode && (await themeResponse.Content.ReadAsStringAsync()).Contains("glass"), "Authenticated phone theme returns canonical value");
 Assert((await client.GetAsync("/api/phone/snapshot")).IsSuccessStatusCode, "Authenticated snapshot works");
 int previousReports = reports;
 await client.PostAsync("/api/phone/status?battery=77&charging=1", null);
@@ -76,6 +88,10 @@ frame = frame with { Screen = new("off", "testing off"), Pc = new(true, false) }
 string? line;
 do { line = await reader.ReadLineAsync(deadline.Token); } while (line != null && !line.Contains("testing off"));
 Assert(line != null, "SSE delivers state transition without reconnect");
+frame = frame with { PanelTheme = "studio" };
+do { line = await reader.ReadLineAsync(deadline.Token); } while (line != null && !line.Contains("studio"));
+Assert(line != null, "SSE delivers a theme change even without a new hardware sample");
+Assert((await client.GetStringAsync("/api/preview")).Contains("studio"), "Browser preview and phone snapshot share the saved theme");
 Assert(reports >= 2, "Authenticated requests report phone presence");
 token = new string('b', 64);
 Assert((await client.GetAsync("/api/phone/snapshot")).StatusCode == System.Net.HttpStatusCode.Unauthorized, "Old token rejected after rotation");

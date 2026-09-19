@@ -9,7 +9,30 @@ public sealed record ScreenDecision(string Mode, string Reason);
 public sealed record PcState(bool Suspended, bool ManualOff);
 public sealed record Snapshot(long Timestamp, string Computer, ScreenDecision Screen,
     string Cpu, string Gpu, Dictionary<string, Metric> Metrics, string? Warning,
-    PcState? Pc = null, long SampleAgeMs = 0, int ProtocolVersion = 2);
+    PcState? Pc = null, long SampleAgeMs = 0, int ProtocolVersion = 2, string? PanelTheme = null);
+
+public sealed record PanelThemeOption(string Id, string Name, string Description)
+{
+    public override string ToString() => Name;
+}
+
+public static class PanelThemes
+{
+    public static readonly PanelThemeOption[] All = [
+        new("classic", "经典 · 仪表盘", "经典双列仪表，大字读数与清晰分区。"),
+        new("material", "Material · 安卓", "柔和配色与圆角卡片。"),
+        new("winui", "WinUI · 微软", "清晰分区与细腻描边。"),
+        new("flutter", "Flutter · 清新卡片", "轻盈卡片与鲜明重点色。"),
+        new("glass", "macOS · 玻璃质感", "半透明层次与柔和光感。"),
+        new("editorial", "纸页 · 数据周刊", "暖纸色与章节排版，支持横竖屏重排。"),
+        new("ambient", "静夜 · 桌面时钟", "深色背景、大时钟与紧凑读数，支持横竖屏重排。"),
+        new("telemetry", "遥测 · 性能座舱", "全宽 CPU / GPU 数据轨道，支持横竖屏重排。"),
+        new("studio", "拼贴 · 硬件工作室", "GPU 主卡与非对称信息块，支持横竖屏重排。")
+    ];
+    public static bool IsKnown(string? id) => All.Any(theme => theme.Id == id);
+    public static string PreviewPath(string? theme = null, bool landscape = false) =>
+        "/preview?orientation=" + (landscape ? "landscape" : "portrait") + (IsKnown(theme) ? "&theme=" + theme : "");
+}
 
 public sealed class Settings
 {
@@ -22,6 +45,8 @@ public sealed class Settings
     public int SampleSeconds { get; set; } = 2;
     public int SleepSampleSeconds { get; set; } = 15;
     public string CpuFanId { get; set; } = "";
+    // Empty until the first phone connects, preserving its existing selection on upgrade.
+    public string PanelTheme { get; set; } = "";
     public string Token { get; set; } = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     [System.Text.Json.Serialization.JsonIgnore] public string? LoadNotice { get; set; }
     public static string DirectoryPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PanelDeck");
@@ -40,6 +65,7 @@ public sealed class Settings
     public void Validate()
     {
         CpuFanId ??= "";
+        if (!PanelThemes.IsKnown(PanelTheme)) PanelTheme = "";
         Port = Math.Clamp(Port, 1024, 65535);
         SampleSeconds = Math.Clamp(SampleSeconds, 1, 10);
         SleepSampleSeconds = Math.Clamp(SleepSampleSeconds, 5, 60);

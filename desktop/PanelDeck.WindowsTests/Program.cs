@@ -9,6 +9,19 @@ void Check(bool ok, string name) { if (!ok) throw new Exception(name); Console.W
 NetworkMonitorTests.Run(Check);
 // Unique local pipes and synthetic data only. No production service, hardware or UI is used.
 var frame = new HardwareFrame(123, "TEST CPU", "TEST GPU", new() { ["cpuTemp"] = new("测试", "C", 42, "synthetic") }, [], null);
+var themeWrites = new List<string>();
+using (var themeController = new Controller(new Settings(), (_, _) => Task.FromResult(frame), next => themeWrites.Add(next.PanelTheme))) {
+    Check(await themeController.ChangePanelTheme("glass", initialize: true) == "glass", "First phone connection adopts its existing theme");
+    Check(await themeController.ChangePanelTheme("classic", initialize: true) == "glass" && themeWrites.Count == 1, "Reconnect cannot overwrite saved PC theme or write settings repeatedly");
+    Check(await themeController.ChangePanelTheme("studio") == "studio", "Explicit PC/phone theme changes replace canonical theme");
+    Check(await themeController.ChangePanelTheme("studio") == "studio" && themeWrites.Count == 2, "Retrying an acknowledged selection is idempotent");
+    var restored = JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(themeController.Settings))!;
+    Check(restored.PanelTheme == "studio", "Theme survives settings serialization and restart");
+}
+using (var failingTheme = new Controller(new Settings { PanelTheme = "glass" }, persist: _ => throw new IOException("test storage failure"))) {
+    try { await failingTheme.ChangePanelTheme("studio"); throw new Exception("Expected persistence failure"); } catch (IOException) { }
+    Check(failingTheme.Settings.PanelTheme == "glass", "Failed persistence does not publish an unsaved theme");
+}
 async Task<HardwareFrame?> RoundTrip(string payload, bool allowDisconnect = false) {
     string name = "PanelDeck.Test." + Guid.NewGuid().ToString("N");
     using var pipe = new NamedPipeServerStream(name, PipeDirection.Out, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly, 0, 262144);

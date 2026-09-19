@@ -58,6 +58,11 @@
       return theme;
     },
     update(data) {
+      // File-based Android previews are owned by the app. Browser drafts with
+      // an explicit hash stay isolated from the saved, synchronised theme.
+      if (location.protocol !== 'file:' && !/(?:^#|&)theme=/.test(location.hash || '') && themes.includes(data.panelTheme) && document.body.dataset?.theme !== data.panelTheme) {
+        window.PanelDeck.setTheme(data.panelTheme);
+      }
       connected = true; receivedAt = performance.now(); sampleAge = Math.max(0, Number(data.sampleAgeMs) || 0);
       document.body.classList.remove('stale');
       el('status').className = ''; el('status').textContent = '●  电脑已连接';

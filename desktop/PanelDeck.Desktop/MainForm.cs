@@ -36,7 +36,7 @@ public sealed class MainForm : BorderlessForm
         var sub = UiTheme.Label("你的桌面，随时可见", 9, UiTheme.Muted); sub.Location = new(23, 88); sidebar.Controls.Add(sub);
         var overview = UiTheme.Button("概览", primary: true); overview.SetBounds(18, 150, 172, 42); sidebar.Controls.Add(overview);
         var settings = UiTheme.Button("设置与配对", OpenSettings); settings.SetBounds(18, 203, 172, 42); sidebar.Controls.Add(settings);
-        var previewButton = UiTheme.Button("打开手机面板 ↗", () => Process.Start(new ProcessStartInfo($"http://127.0.0.1:{controller.Settings.Port}/") { UseShellExecute = true }));
+        var previewButton = UiTheme.Button("打开手机面板 ↗", () => Process.Start(new ProcessStartInfo(controller.PreviewUrl()) { UseShellExecute = true }));
         previewButton.SetBounds(18, 256, 172, 42); sidebar.Controls.Add(previewButton);
         var sidebarFoot = UiTheme.Label("局域网连接\n关闭窗口后继续在托盘运行", 9, UiTheme.Muted); sidebarFoot.AutoSize = false; sidebarFoot.Size = new(175, 55);
         sidebarFoot.Location = new(22, ClientSize.Height - 80); sidebar.Controls.Add(sidebarFoot); sidebar.Layout += (_, _) => sidebarFoot.Location = new(sidebar.Padding.Left, sidebar.Height - sidebarFoot.Height - sidebar.Padding.Bottom);

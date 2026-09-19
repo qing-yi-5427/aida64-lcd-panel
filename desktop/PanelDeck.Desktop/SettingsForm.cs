@@ -5,7 +5,8 @@ namespace PanelDeck;
 public sealed class SettingsForm : BorderlessForm
 {
     private readonly Controller controller;
-    private readonly ComboBox address = new(), fan = new();
+    private readonly ComboBox address = new(), fan = new(), panelTheme = new();
+    private bool themeEdited, refreshingTheme;
     private readonly NumericUpDown port = Number(1024, 65535), sample = Number(1, 10), sleepingSample = Number(5, 60);
     private readonly CheckBox collector = new() { Text = "复用已安装的后台采集服务", AutoSize = true }, startup = new() { Text = "登录 Windows 后启动", AutoSize = true }, minimized = new() { Text = "启动时只显示托盘图标", AutoSize = true },
         revoke = new() { Text = "撤销所有手机配对，保存后需重新配对", AutoSize = true };
@@ -25,7 +26,7 @@ public sealed class SettingsForm : BorderlessForm
         var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Sidebar, Margin = new(0) }; root.Controls.Add(sidebar);
         var title = UiTheme.Label("设置", 24, bold: true); title.Location = new(24, 28); sidebar.Controls.Add(title);
         var caption = UiTheme.Label("让曜屏适合你的桌面", 9, UiTheme.Muted); caption.Location = new(24, 78); sidebar.Controls.Add(caption);
-        foreach (var name in new[] { "连接与配对", "手机屏幕", "采集与运行", "运行环境" }) {
+        foreach (var name in new[] { "连接与配对", "面板外观", "手机屏幕", "采集与运行", "运行环境" }) {
             int index = navButtons.Count; var nav = UiTheme.Button(name, () => SelectPage(index)); nav.SetBounds(18, 130 + index * 53, 172, 42); navButtons.Add(nav); sidebar.Controls.Add(nav);
         }
         var body = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Padding = new(28, 25, 28, 18), Margin = new(0) };
@@ -53,12 +54,31 @@ public sealed class SettingsForm : BorderlessForm
         };
         Row(network, "无法连接时", setup); Row(network, "配对管理", revoke);
         Hint(network, "仅用于可信的家庭或办公室网络，请勿开放到公网。端口改变后需重新允许局域网连接。");
+        var appearance = Page("面板外观", "电脑预览与手机面板，共用同一套主题。");
+        Section(appearance, "显示主题");
+        panelTheme.DropDownStyle = ComboBoxStyle.DropDownList;
+        panelTheme.Items.AddRange(PanelThemes.All);
+        RefreshThemeSelection(); Row(appearance, "CSS 样式", panelTheme);
+        var themeDescription = Hint(appearance, ((PanelThemeOption)panelTheme.SelectedItem!).Description, 11, UiTheme.Ink);
+        panelTheme.SelectedIndexChanged += (_, _) => {
+            if (!refreshingTheme) themeEdited = true;
+            themeDescription.Text = ((PanelThemeOption)panelTheme.SelectedItem!).Description;
+        };
+        Hint(appearance, "保存后同步到已配对手机；手机暂时离线时，重新连接后应用。在手机端保存主题，也会同步回电脑。");
+        Section(appearance, "预览当前选择");
+        void Preview(bool landscape) => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+            controller.PreviewUrl(((PanelThemeOption)panelTheme.SelectedItem!).Id, landscape)) { UseShellExecute = true });
+        var portraitPreview = UiTheme.Button("竖屏预览 ↗", () => Preview(false)); portraitPreview.Width = 178;
+        var landscapePreview = UiTheme.Button("横屏预览 ↗", () => Preview(true)); landscapePreview.Width = 178;
+        Row(appearance, "手机比例", portraitPreview); Row(appearance, "横屏布局", landscapePreview);
+        Hint(appearance, "在浏览器内按手机比例显示，使用与 APK 完全相同的 CSS 和实时数据。预览不会修改手机主题，取消设置也不会保存。前五套主题保留竖版布局，后四套可横屏重排。");
+        Hint(appearance, "首次连接会沿用手机已保存的主题。两端都升级后支持同步；旧版 APK 仍可显示数据，但无法接收主题设置。");
         var display = Page("手机屏幕", "简单联动，让手机跟随电脑的开关状态。");
         Section(display, "自动亮灭屏");
         Hint(display, "电脑开机且未睡眠 → 手机亮屏\n电脑睡眠、关机或断联 → 手机息屏", 15, UiTheme.Ink);
         Hint(display, "锁屏、静置和游戏均不影响亮屏。电脑恢复运行并重新连接后，手机自动亮屏。连接中断时保留 45 秒缓冲，避免网络抖动导致反复亮灭。");
         Section(display, "在手机上设置");
-        Hint(display, "亮度由手机系统自动调节。显示主题、息屏方式都可以直接在手机的设置中选择。");
+        Hint(display, "亮度由手机系统自动调节。显示主题可在电脑的“面板外观”或手机设置中选择；息屏方式在手机上设置。");
         Hint(display, "默认息屏会显示黑色遮罩，然后等待系统超时。若要立即熄灭屏幕，可在手机上授权“立即锁屏”。");
         Section(display, "临时息屏"); Hint(display, "主界面可以手动让手机息屏；点击“自动亮灭”即可恢复电脑与手机的联动。");
         var hardware = Page("采集与运行", "调节采样速度，以及曜屏在电脑上的运行方式。");
@@ -99,19 +119,25 @@ public sealed class SettingsForm : BorderlessForm
             var next = s.Copy(); next.ListenAddress = address.Text; next.Port = (int)port.Value; next.SampleSeconds = (int)sample.Value; next.SleepSampleSeconds = (int)sleepingSample.Value; next.CpuFanId = (fan.SelectedItem as FanOption)?.Id ?? "";
             if (revoke.Checked) next.Token = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
             next.UseCollectorService = collector.Checked; next.StartWithWindows = startup.Checked; next.StartMinimized = minimized.Checked; save.Enabled = false;
-            try { await controller.ApplySettings(next); DialogResult = DialogResult.OK; Close(); }
+            try { await controller.ApplySettings(next, themeEdited ? ((PanelThemeOption)panelTheme.SelectedItem!).Id : null); DialogResult = DialogResult.OK; Close(); }
             catch (Exception ex) { message.Text = "保存失败：" + ex.Message; save.Enabled = true; }
         };
         actions.Controls.AddRange([save, cancel]); body.Controls.Add(actions); CancelButton = cancel; AcceptButton = save;
-        timer.Tick += (_, _) => RefreshPairing(); SelectPage(0);
+        timer.Tick += (_, _) => { RefreshPairing(); RefreshThemeSelection(); }; timer.Start(); SelectPage(0);
         InstallChrome(root, allowMaximize: false, allowMinimize: false);
         UiTheme.ApplyBackground(this);
         AutoScaleMode = AutoScaleMode.Dpi; AutoScaleDimensions = new SizeF(96, 96); ResumeLayout(true);
     }
     internal void SelectPage(int index) { for (int i = 0; i < pageControls.Count; i++) { pageControls[i].Visible = i == index; navButtons[i].Selected = i == index; navButtons[i].Invalidate(); } }
+    private void RefreshThemeSelection() {
+        if (themeEdited || panelTheme.Items.Count == 0) return;
+        int index = Math.Max(0, Array.FindIndex(PanelThemes.All, theme => theme.Id == controller.Settings.PanelTheme));
+        refreshingTheme = true;
+        try { panelTheme.SelectedIndex = index; } finally { refreshingTheme = false; }
+    }
     private void RefreshPairing() {
-        if (!controller.Pairing.IsActive) { pairing.Text = "配对码已使用或已结束"; timer.Stop(); return; }
-        var left = controller.Pairing.RemainingSeconds; pairing.Text = left > 0 ? $"{pairingCode}   {left / 60}:{left % 60:00}" : "配对码已过期"; if (left <= 0) timer.Stop();
+        if (!controller.Pairing.IsActive) { pairing.Text = pairingCode.Length == 0 ? "尚未开启配对" : "配对码已使用或已结束"; return; }
+        var left = controller.Pairing.RemainingSeconds; pairing.Text = left > 0 ? $"{pairingCode}   {left / 60}:{left % 60:00}" : "配对码已过期";
     }
     private static NumericUpDown Number(int min, int max) => new() { Minimum = min, Maximum = max, Width = 104, BorderStyle = BorderStyle.FixedSingle };
     private TableLayoutPanel Page(string title, string description) {
@@ -134,10 +160,11 @@ public sealed class SettingsForm : BorderlessForm
         if (input is ComboBox combo) { combo.DrawMode = DrawMode.OwnerDrawFixed; combo.ItemHeight = 26; combo.DrawItem += (_, e) => { e.DrawBackground(); var text = e.Index >= 0 ? combo.Items[e.Index]?.ToString() ?? "" : combo.Text; TextRenderer.DrawText(e.Graphics, text, combo.Font, e.Bounds, e.ForeColor, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis); e.DrawFocusRectangle(); }; }
         if (input is CheckBox check) { check.MaximumSize = new(430, 0); check.ForeColor = UiTheme.Ink; }
     }
-    private static void Hint(TableLayoutPanel grid, string text, float size = 9, Color? color = null, bool bold = false) {
+    private static UiLabel Hint(TableLayoutPanel grid, string text, float size = 9, Color? color = null, bool bold = false) {
         int row = grid.RowCount++; grid.RowStyles.Add(new(SizeType.AutoSize)); var hint = UiTheme.Label(text, size, color ?? UiTheme.Muted, bold);
         hint.MaximumSize = new(620, 0); hint.Margin = new(0, 2, 0, 12); grid.Controls.Add(hint, 0, row); grid.SetColumnSpan(hint, 2);
         grid.SizeChanged += (_, _) => hint.MaximumSize = new(Math.Max(180, grid.ClientSize.Width - grid.Padding.Horizontal - 4), 0);
+        return hint;
     }
     protected override void Dispose(bool disposing) { var font = Font; if (disposing) { controller.Pairing.Close(); timer.Dispose(); } base.Dispose(disposing); if (disposing) font.Dispose(); }
     private sealed record FanOption(string Id, string Label) { public override string ToString() => Label; }

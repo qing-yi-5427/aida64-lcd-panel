@@ -10,9 +10,10 @@ android {
         applicationId "com.paneldeck.aida"
         minSdk 26
         targetSdk 35
-        versionCode 9
-        versionName "2.5.0"
-        testInstrumentationRunner "com.paneldeck.aida.ThemeUiInstrumentation"
+        versionCode 10
+        versionName "2.5.1"
+        testInstrumentationRunner(project.findProperty("themeSyncTest") == "true"
+                ? "com.paneldeck.aida.ThemeSyncInstrumentation" : "com.paneldeck.aida.ThemeUiInstrumentation")
     }
 
     buildTypes {

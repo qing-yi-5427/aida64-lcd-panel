@@ -504,6 +504,8 @@ public final class MainActivity extends Activity {
         form.addView(stateCard, cardParams());
 
         form.addView(section("面板外观"), matchWrap());
+        final String themeAtOpen = PanelTheme.normalize(prefs.getString(PanelTheme.KEY, "classic"));
+        applyPanelTheme(themeAtOpen);
         LinearLayout appearanceCard = card(Color.WHITE);
         // A separate, scrollable choice dialog has room for both the theme name
         // and its description even on narrow screens and in landscape. OEM
@@ -740,6 +742,7 @@ public final class MainActivity extends Activity {
                 if (!endpoint.equals(pairedAddress[0]) || !pairedToken[0].matches("[a-fA-F0-9]{64}")) { pairStatus.setText("请先配对此电脑。"); return; }
             }
             String normalized = normalizeUrl(url);
+            activeTheme = DesktopLinkService.saveTheme(p, activeTheme, themeAtOpen);
             p.edit().putBoolean(KEY_CONFIGURED, true)
                     .putBoolean(DesktopLinkService.KEY_ENABLED, desktop.isChecked())
                     .putString(DesktopLinkService.KEY_URL, pairedAddress[0]).putString(DesktopLinkService.KEY_TOKEN, pairedToken[0])
@@ -749,7 +752,6 @@ public final class MainActivity extends Activity {
                     .putString(ScheduleManager.KEY_HOME_URL, normalized)
                     .putInt(ScheduleManager.KEY_WORK_START, workStart[0]).putInt(ScheduleManager.KEY_WORK_END, workEnd[0])
                     .putInt(ScheduleManager.KEY_REST_START, restStart[0]).putInt(ScheduleManager.KEY_REST_END, restEnd[0])
-                    .putString(PanelTheme.KEY, PanelTheme.normalize(activeTheme))
                     .putLong(ScheduleManager.KEY_OVERRIDE_UNTIL, 0L).apply();
             desktopPageReady = false;
             if (desktop.isChecked()) {
@@ -857,6 +859,10 @@ public final class MainActivity extends Activity {
     private void updateDesktopPanel() {
         if (panel == null || !DesktopLinkService.enabled(this) || !PanelTheme.isLocalUrl(panel.getUrl()) || !desktopPageReady) return;
         if (!themePreview && "off".equals(DesktopLinkService.screenMode())) return;
+        if (controlDialog == null && !themePreview) {
+            String savedTheme = PanelTheme.normalize(prefs.getString(PanelTheme.KEY, "classic"));
+            if (!savedTheme.equals(activeTheme)) applyPanelTheme(savedTheme);
+        }
         String json = DesktopLinkService.json();
         if (json == null) panel.evaluateJavascript("window.PanelDeck && PanelDeck.offline()", null);
         else panel.evaluateJavascript("window.PanelDeck && PanelDeck.update(" + json + ")", null);

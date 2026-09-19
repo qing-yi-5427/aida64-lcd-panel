@@ -3,6 +3,7 @@ package com.paneldeck.aida;
 /** Local display preferences. Theme IDs also form part of the bundled panel's JS contract. */
 final class PanelTheme {
     static final String KEY = "panel_theme";
+    static final String PENDING = "panel_theme_pending";
     static final String LOCAL_URL = "file:///android_asset/index.html";
     static final String[] IDS = { "classic", "material", "winui", "flutter", "glass", "editorial", "ambient", "telemetry", "studio" };
     static final String[] NAMES = { "经典 · 仪表盘", "Material · 安卓", "WinUI · 微软", "Flutter · 清新卡片", "macOS · 玻璃质感", "纸页 · 数据周刊", "静夜 · 桌面时钟", "遥测 · 性能座舱", "拼贴 · 硬件工作室" };
@@ -19,6 +20,11 @@ final class PanelTheme {
     };
 
     private PanelTheme() {}
+
+    static boolean isKnown(String value) {
+        for (String id : IDS) if (id.equals(value)) return true;
+        return false;
+    }
 
     static String normalize(String value) {
         for (String id : IDS) if (id.equals(value)) return id;

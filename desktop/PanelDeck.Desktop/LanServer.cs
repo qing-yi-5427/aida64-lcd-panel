@@ -35,7 +35,7 @@ public sealed class LanServer : IAsyncDisposable
     private int streams;
     public string Address => server.Urls.First();
     public LanServer(string address, int port, Func<Snapshot> snapshot, Func<string> token,
-        PairingWindow pairing, Action<int, bool> seen, Action hold)
+        PairingWindow pairing, Action<int, bool> seen, Action hold, Func<string, bool, Task<string>>? changeTheme = null)
     {
         var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions { Args = [], ContentRootPath = AppContext.BaseDirectory });
         builder.Logging.ClearProviders();
@@ -73,6 +73,16 @@ public sealed class LanServer : IAsyncDisposable
         server.MapGet("/api/phone/snapshot", (HttpContext c) => { PhoneSeen(c); return Results.Json(Fresh()); });
         server.MapPost("/api/phone/status", (HttpContext c) => { PhoneSeen(c); return Results.Ok(); });
         server.MapPost("/api/phone/hold", () => { hold(); return Results.Ok(); });
+        server.MapPost("/api/phone/theme", async (HttpContext c) => {
+            if (changeTheme == null) return Results.NotFound();
+            if (!c.Request.HasJsonContentType()) return Results.BadRequest();
+            ThemeRequest? request;
+            try { request = await c.Request.ReadFromJsonAsync<ThemeRequest>(c.RequestAborted); }
+            catch (JsonException) { return Results.BadRequest(); }
+            catch (BadHttpRequestException ex) { return Results.StatusCode(ex.StatusCode); }
+            if (request == null || !PanelThemes.IsKnown(request.Theme)) return Results.BadRequest();
+            return Results.Json(new { theme = await changeTheme(request.Theme, request.Initialize) });
+        });
         // SSE is a normal HTTP connection. State changes arrive without USB or repeated polling.
         server.MapGet("/api/phone/events", async (HttpContext c) => {
             if (Interlocked.Increment(ref streams) > 4) { Interlocked.Decrement(ref streams); c.Response.StatusCode = 429; return; }
@@ -80,17 +90,18 @@ public sealed class LanServer : IAsyncDisposable
             c.Response.ContentType = "text/event-stream";
             c.Response.Headers["X-Accel-Buffering"] = "no";
             using var cancel = CancellationTokenSource.CreateLinkedTokenSource(c.RequestAborted, stopped.Token);
-            ScreenDecision? lastScreen = null; PcState? lastPc = null; long lastSample = -1; long lastSend = 0;
+            ScreenDecision? lastScreen = null; PcState? lastPc = null; long lastSample = -1; long lastSend = 0; string? lastTheme = null;
             var connectedToken = token();
             try {
                 while (!cancel.IsCancellationRequested && token() == connectedToken) {
                     var s = snapshot(); var now = Environment.TickCount64;
                     // Keep the stream alive even when the hardware sampling interval is longer.
-                    if (s.Screen != lastScreen || s.Pc != lastPc || s.Timestamp != lastSample || now - lastSend >= 5000) {
+                    if (s.Screen != lastScreen || s.Pc != lastPc || s.Timestamp != lastSample || s.PanelTheme != lastTheme || now - lastSend >= 5000) {
                         var fresh = s with { SampleAgeMs = s.Timestamp <= 0 ? long.MaxValue : Math.Max(0, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - s.Timestamp) };
                         await c.Response.WriteAsync("data: " + JsonSerializer.Serialize(fresh, json) + "\n\n", cancel.Token);
                         await c.Response.Body.FlushAsync(cancel.Token);
                         lastScreen = s.Screen; lastPc = s.Pc; lastSample = s.Timestamp; lastSend = now;
+                        lastTheme = s.PanelTheme;
                     }
                     await Task.Delay(250, cancel.Token);
                 }
@@ -98,6 +109,9 @@ public sealed class LanServer : IAsyncDisposable
             finally { Interlocked.Decrement(ref streams); }
         });
         server.MapGet("/api/preview", () => Results.Json(Fresh()));
+        foreach (var (route, file, mime) in new[] { ("/preview", "preview.html", "text/html"), ("/preview.js", "preview.js", "text/javascript"), ("/preview.css", "preview.css", "text/css") }) {
+            server.MapGet(route, () => Results.File(Path.Combine(AppContext.BaseDirectory, "panel", file), mime));
+        }
         foreach (var (route, file, mime) in new[] { ("/", "index.html", "text/html"), ("/panel.js", "panel.js", "text/javascript"), ("/panel.css", "panel.css", "text/css"), ("/network.css", "network.css", "text/css") }) {
             server.MapGet(route, () => Results.File(Path.Combine(AppContext.BaseDirectory, "panel", file), mime));
         }
@@ -121,4 +135,5 @@ public sealed class LanServer : IAsyncDisposable
             : address.IsIPv6LinkLocal || (b[0] & 0xfe) == 0xfc;
     }
     private sealed record PairRequest(string Code);
+    private sealed record ThemeRequest(string Theme, bool Initialize = false);
 }

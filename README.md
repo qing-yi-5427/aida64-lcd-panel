@@ -2,19 +2,20 @@
 
 一个 Windows 程序 + 一个 Android APK，让闲置手机成为桌面硬件监控面板。
 
-## 2.5.0
+## 2.5.1
 
 - PC 独立读取 CPU、GPU、内存、风扇和上下行网速，经局域网 HTTP/SSE 发送到手机；日常不依赖 AIDA64、HWiNFO 或 ADB。
 - 电脑开机且未睡眠时手机保持亮屏，睡眠、关机或断连后息屏。锁屏、静置和游戏不会触发息屏；亮度由手机系统管理。
 - PC 提供设置与临时码配对。主程序普通权限运行，完整硬件采集由用户主动点击 UAC 按钮授权，本次运行内有效；网速无需授权，包含局域网流量。
 - 手机内置九套主题：经典、Material、WinUI、Flutter、玻璃，以及新增纸页、静夜、遥测、拼贴。所有主题保留完整时间，新增四套支持横竖屏独立布局，设置中可预览和切换。
+- PC「设置 → 面板外观」支持主题选择与横竖屏预览。PC 和手机保存主题后双向同步，预览草稿不会覆盖已保存主题；“打开手机面板”默认跟随手机主题并按手机比例显示。
 - PC 精简包约 2.6 MB，复用 x64 .NET 10 Desktop / ASP.NET Core 运行时；启动助手检测缺失组件，用户主动点击后才安装。
 
 ![四种新布局预览，图中为示例数据](docs/images/themes-2.5.0.png)
 
 ## 下载与使用
 
-在 [GitHub Releases](https://github.com/qing-yi-5427/aida64-lcd-panel/releases/latest) 下载 `PanelDeck-PC-2.5.0-Lite.zip` 和 `PanelDeck-Android-2.5.0.apk`。APK 当前采用开发签名，供直接安装与测试，不是应用商店发行版本。
+已发布版本在 [GitHub Releases](https://github.com/qing-yi-5427/aida64-lcd-panel/releases/latest) 下载，分别选择 `PanelDeck-PC-版本号-Lite.zip` 和 `PanelDeck-Android-版本号.apk`。APK 当前采用开发签名，供直接安装与测试，不是应用商店发行版本。主题双向同步需要两端均为 2.5.1 或更新版本。
 
 1. 解压 PC 包，保留整个文件夹，运行 `PanelDeck.Launcher.exe`。更新前从托盘完整退出旧版。
 2. 安装 APK，手机与电脑连接同一可信局域网。
