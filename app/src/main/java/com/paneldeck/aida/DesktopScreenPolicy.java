@@ -2,6 +2,9 @@ package com.paneldeck.aida;
 
 /** PC power state only; keyboard, mouse, gamepad and lock screen are irrelevant. */
 final class DesktopScreenPolicy {
+    static boolean needsWake(boolean connected, String mode, boolean interactive, boolean locked, boolean panelResumed) {
+        return connected && "on".equals(mode) && (!interactive || (locked && !panelResumed));
+    }
     static String decide(boolean suspended, boolean manualOff) {
         return suspended || manualOff ? "off" : "on";
     }

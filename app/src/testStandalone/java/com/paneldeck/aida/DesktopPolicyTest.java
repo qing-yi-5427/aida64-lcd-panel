@@ -2,6 +2,12 @@ package com.paneldeck.aida;
 public final class DesktopPolicyTest {
     private static void check(String expected, String actual) { if (!expected.equals(actual)) throw new AssertionError(expected + " != " + actual); }
     public static void main(String[] args) throws Exception {
+        if (!DesktopScreenPolicy.needsWake(true, "on", false, true, false)) throw new AssertionError("Wake sleeping phone");
+        if (!DesktopScreenPolicy.needsWake(true, "on", true, true, false)) throw new AssertionError("Open panel on already-lit lock screen");
+        if (DesktopScreenPolicy.needsWake(true, "on", true, true, true)) throw new AssertionError("Do not repeatedly launch panel over keyguard");
+        if (DesktopScreenPolicy.needsWake(true, "on", true, false, false)) throw new AssertionError("Do not interrupt another unlocked app");
+        if (DesktopScreenPolicy.needsWake(false, "on", false, true, false)) throw new AssertionError("Offline must not wake");
+        if (DesktopScreenPolicy.needsWake(true, "off", false, true, false)) throw new AssertionError("Sleeping PC must not wake phone");
         check("on", DesktopScreenPolicy.decide(false, false));
         check("off", DesktopScreenPolicy.decide(true, false));
         check("off", DesktopScreenPolicy.decide(false, true));
@@ -24,6 +30,6 @@ public final class DesktopPolicyTest {
             catch (java.io.IOException expected) { }
         }
         if (EventStream.retryDelay(1) != 1000 || EventStream.retryDelay(100) != 15000) throw new AssertionError("Retry bounds");
-        System.out.println("PASS: Android power policy, LAN addresses, event framing and retry bounds (27 checks)");
+        System.out.println("PASS: Android power/wake policy, LAN addresses, event framing and retry bounds (33 checks)");
     }
 }

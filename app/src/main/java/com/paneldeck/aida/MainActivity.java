@@ -56,6 +56,8 @@ public final class MainActivity extends Activity {
     private static final int SIGNAL = Color.rgb(200, 255, 51);
     private static final String KEY_CONFIGURED = "initial_setup_complete";
     static final String ACTION_WAKE = "com.paneldeck.aida.WAKE_PANEL";
+    static boolean panelResumed;
+    private Button backgroundWakePermission;
 
     private SharedPreferences prefs;
     private WebView panel;
@@ -163,6 +165,8 @@ public final class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        panelResumed = true;
+        updateBackgroundWakePermission();
         enterImmersiveMode();
         panel.onResume();
         panel.resumeTimers();
@@ -173,6 +177,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onPause() {
+        panelResumed = false;
         if (themePreview) {
             themePreview = false;
             handler.removeCallbacks(restoreSettingsAfterPreview);
@@ -618,6 +623,21 @@ public final class MainActivity extends Activity {
                 }
             }, "panel-pairing").start();
         });
+        backgroundWakePermission = smallButton("");
+        updateBackgroundWakePermission();
+        backgroundWakePermission.setOnClickListener(v -> {
+            try {
+                startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName())));
+            } catch (android.content.ActivityNotFoundException unavailable) {
+                startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())));
+            }
+        });
+        form.addView(backgroundWakePermission, matchWrap());
+        form.addView(text("自动回到面板需要系统的“显示在其他应用上层”授权。曜屏不会绘制悬浮窗；只在电脑要求亮屏且手机息屏或锁屏时打开面板。HyperOS 还需允许锁屏显示和后台弹出界面。", 12, Color.rgb(99, 105, 101)), matchWrap());
+        Button backgroundSettings = smallButton("后台运行与省电设置");
+        backgroundSettings.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))));
+        form.addView(backgroundSettings, matchWrap());
+        form.addView(text("HyperOS 请将曜屏的省电策略设为“无限制”。系统的电池优化白名单不能替代此设置，否则息屏后仍可能冻结连接，无法接收电脑唤醒状态。", 12, Color.rgb(99, 105, 101)), matchWrap());
         Switch keepalive = new Switch(this);
         keepalive.setText("充电时保持后台连接（兼容模式）"); keepalive.setTextColor(INK);
         keepalive.setChecked(p.getBoolean(DesktopLinkService.KEY_KEEPALIVE, false));
@@ -889,6 +909,11 @@ public final class MainActivity extends Activity {
             setShowWhenLocked(true);
             setTurnScreenOn(true);
         }
+    }
+
+    private void updateBackgroundWakePermission() {
+        if (backgroundWakePermission != null) backgroundWakePermission.setText(
+                Settings.canDrawOverlays(this) ? "自动打开面板：已授权 · 管理权限" : "自动打开面板：需要授权");
     }
 
     private void finishScheduledWake() {

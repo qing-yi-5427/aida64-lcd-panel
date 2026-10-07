@@ -83,6 +83,12 @@ APK 输出到 `app/build/outputs/apk/debug/app-debug.apk`。
 3. 点击“开启精确定时权限（推荐）”，在系统设置中允许。
 4. 小米/HyperOS 设备连接 ADB 后运行 `./configure-hyperos-adb.ps1`，一次性允许锁屏显示、后台启动和忽略电池优化。
 
+Android 16 上，HyperOS 的“后台弹出界面”授权可能仍不足以允许后台启动面板。Android 端 2.5.2 增加“自动打开面板”授权入口：在手机设置中允许曜屏“显示在其他应用上层”，或在明确同意此权限后运行 `./configure-hyperos-adb.ps1 -AllowBackgroundLaunch`。此权限用于系统支持的后台启动例外；程序不会创建悬浮窗，也不会在手机已解锁并使用其他应用时抢占前台。
+
+HyperOS 还需在曜屏应用详情中将省电策略设为“无限制”。Android 的电池优化白名单与 HyperOS 的进程冻结策略不同：真机测试曾出现已有前台服务和白名单、仍被 `GreezeManager` 以 `tobg` 原因冻结的情况。手机设置中的“后台运行与省电设置”可打开应用详情。现有兼容模式也不能代替这项系统设置。
+
+手机自动化测试结束后，Android 会停止被测试应用。测试完成必须重新启动 `com.paneldeck.aida/.MainActivity`（唤醒 action 为 `com.paneldeck.aida.WAKE_PANEL`），并使用 `dumpsys activity service com.paneldeck.aida/.DesktopLinkService` 确认 `connected=true`、数据持续更新；仅看到启动命令成功不能视为后台恢复。若手机停留锁屏，还需检查后台启动权限和实际前台页面。
+
 ## Android 限制
 
 普通第三方应用不能无条件绕过 PIN/图案/密码；本应用也不会移除设备凭据。它会在计划结束时通过 `AlarmClock` 唤醒屏幕，并以系统允许的锁屏显示窗口直接展示面板。小米/HyperOS 必须额外授予“锁屏显示”权限，脚本已包含该配置。

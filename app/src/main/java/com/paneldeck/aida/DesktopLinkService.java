@@ -125,7 +125,9 @@ public final class DesktopLinkService extends Service {
         boolean changed = !proposed.equals(appliedMode);
         PowerManager power = (PowerManager)getSystemService(POWER_SERVICE);
         long now = SystemClock.elapsedRealtime();
-        if ("on".equals(proposed) && connected() && !power.isInteractive() && now - lastWakeAttempt >= 15000L) {
+        boolean locked = getSystemService(android.app.KeyguardManager.class).isKeyguardLocked();
+        if (DesktopScreenPolicy.needsWake(connected(), proposed, power.isInteractive(), locked, MainActivity.panelResumed)
+                && now - lastWakeAttempt >= 15000L) {
             lastWakeAttempt = now; ScreenWake.wake(this);
         }
         if ("off".equals(proposed) && !"off".equals(appliedMode)) {
@@ -280,5 +282,7 @@ public final class DesktopLinkService extends Service {
         writer.println("connected=" + connected() + " mode=" + screenMode() + " status=" + status);
         writer.println("lastPacketAgeMs=" + (lastSeen == 0 ? -1 : SystemClock.elapsedRealtime() - lastSeen) + " generation=" + generation);
         writer.println("poweredKeepaliveHeld=" + (networkWake != null && networkWake.isHeld()));
+        writer.println("backgroundLaunchPermission=" + android.provider.Settings.canDrawOverlays(this)
+                + " panelResumed=" + MainActivity.panelResumed + " lastWakeAttempt=" + lastWakeAttempt);
     }
 }
