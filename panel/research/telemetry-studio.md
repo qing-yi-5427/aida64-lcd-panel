@@ -1,5 +1,7 @@
 # Telemetry / Studio design notes
 
+> 历史设计调研：以下记录当时的参考与布局演进，旧版尺寸、数据数量及截图不作为当前规范。九主题当前布局与验证入口见 [主题说明](../THEMES.md)。
+
 Implemented as independent scoped CSS files after `panel.css`, using the existing 14-metric data contract. No HTML or JavaScript changes are required by either skin. All decorative elements are static; all visible measurements and memory tracks use existing real sensor values.
 
 ## References actually inspected
