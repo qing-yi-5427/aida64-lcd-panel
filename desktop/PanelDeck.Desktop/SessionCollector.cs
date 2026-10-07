@@ -24,8 +24,7 @@ public sealed class SessionCollector : IDisposable
     public void Authorize()
     {
         if (IsAuthorized) return;
-        var driver = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PawnIO", "PawnIOLib.dll");
-        if (!File.Exists(driver)) throw new InvalidOperationException("尚未安装 PawnIO 驱动。请先通过发行包的完整采集配置安装驱动，再授权本次读取。");
+        // ETW frame rates need elevation but no PawnIO. HardwareMonitor reports missing sensors.
         Start(true);
     }
     private void Start(bool full)
@@ -119,7 +118,17 @@ public sealed class SessionCollector : IDisposable
         using var lifetime = new NamedPipeClientStream(".", name + ".Lifetime", PipeDirection.In, PipeOptions.Asynchronous);
         using var connectionTimeout = new CancellationTokenSource(5000);
         await lifetime.ConnectAsync(connectionTimeout.Token);
-        await RunUntilParentExits(parent, ct => CollectorService.Serve(name, ct, sid, allowPrivileged: full), lifetime.ReadAsync(new byte[1]).AsTask());
+        await RunUntilParentExits(parent, ct => ServeSession(name, sid, full, ct), lifetime.ReadAsync(new byte[1]).AsTask());
+    }
+    private static async Task ServeSession(string name, SecurityIdentifier sid, bool full, CancellationToken ct)
+    {
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var hardware = CollectorService.Serve(name, stop.Token, sid, allowPrivileged: full);
+        if (!full) { await hardware; return; }
+        var frames = FrameRatePipe.Serve(name, sid, stop.Token);
+        await Task.WhenAny(hardware, frames);
+        stop.Cancel();
+        await Task.WhenAll(hardware, frames);
     }
     private void CloseWorker() {
         lifetimeStop?.Cancel(); lifetime?.Dispose(); lifetimeStop?.Dispose(); process?.Dispose();

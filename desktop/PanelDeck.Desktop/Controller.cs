@@ -131,7 +131,7 @@ public sealed class Controller : IDisposable
                         lastFrame = reading; lastSuspended = sleeping; lastManual = manual;
                         lastTheme = theme;
                     }
-                    if ((lastMode == "off" && snapshot.Screen.Mode != "off") || (!wasOnline && online)) RequestSample();
+                    if ((lastMode.Length > 0 && lastMode != snapshot.Screen.Mode) || wasOnline != online) RequestSample();
                     wasOnline = online; lastMode = snapshot.Screen.Mode;
                     await Task.Delay(250, stop.Token);
                 }
@@ -179,7 +179,14 @@ public sealed class Controller : IDisposable
                             next = next with { Metrics = metrics, Warning = fan == null ? "所选 CPU 风扇接口当前不可用。" : next.Warning?.Contains("CPU_FAN 暂按") == true ? null : next.Warning };
                         }
                         var network = networkMonitor.Sample();
+                        bool captureFrames = config.EnableGameFps && PhoneOnline && !suspended && !manualOff;
+                        var fps = FrameRateMonitor.Missing(!config.EnableGameFps ? "帧率监控已关闭" : !captureFrames ? "手机离线 / 面板息屏" : "请在电脑授权完整读取（UAC）");
+                        if (sampleOverride == null && sessionCollector.IsAuthorized && sessionCollector.Pipe is string framesPipe)
+                            fps = await FrameRatePipe.Read(framesPipe, captureFrames, stop.Token);
                         var networkMetrics = new Dictionary<string, Metric>(next.Metrics) {
+                            ["gameFps"] = new(fps.Label, fps.Unit, fps.Value, fps.Source),
+                            ["gameFrameTime"] = new("帧时间", "ms", fps.FrameTimeMs, "约 2 秒平均显示帧间隔"),
+                            ["gameFpsLow"] = new("1% Low", "FPS", fps.Low1Percent, fps.Value == null ? fps.Source : fps.Low1Percent == null ? "统计中 · 需连续 30 秒显示帧数据" : "最近 30 秒最慢 1% 显示帧平均耗时换算"),
                             ["netDownload"] = new("下载", "B/s", network.Download, network.Source),
                             ["netUpload"] = new("上传", "B/s", network.Upload, network.Source)
                         };

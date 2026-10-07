@@ -5,8 +5,14 @@ using System.Text.Json;
 
 if (args.FirstOrDefault() == "--lifecycle-fixture") { await Task.Delay(1200); return; }
 
+if (args.Length >= 2 && args[0] == "--display-probe") {
+    await DisplayFrameTests.Probe(args[1], args.Length > 2 ? int.Parse(args[2]) : 30); return;
+}
+
 void Check(bool ok, string name) { if (!ok) throw new Exception(name); Console.WriteLine("PASS " + name); }
 NetworkMonitorTests.Run(Check);
+await FrameRateTests.Run(Check);
+DisplayFrameTests.Run(Check);
 // Unique local pipes and synthetic data only. No production service, hardware or UI is used.
 var frame = new HardwareFrame(123, "TEST CPU", "TEST GPU", new() { ["cpuTemp"] = new("测试", "C", 42, "synthetic") }, [], null);
 var themeWrites = new List<string>();

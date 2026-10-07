@@ -48,7 +48,12 @@
   function staleSample() {
     document.body.classList.add('stale');
     el('freshness').textContent = '等待新采样';
+    clearFrames(); el('fps-source').textContent = '等待新采样';
     el('status').textContent = '●  已连接 · 硬件数据暂未更新';
+  }
+  function clearFrames() {
+    for (const id of ['game-fps','game-frame-time','game-fps-low']) el(id).textContent = '—';
+    el('fps-low-window').textContent = '30s';
   }
   window.PanelDeck = {
     setTheme(id) {
@@ -78,13 +83,17 @@
         } else node.textContent = metric && Number.isFinite(metric.value) ? metric.value.toFixed(Number(node.dataset.decimals || 0)) : '—';
         node.title = metric?.source || '暂不可用';
       }
+      el('fps-source').textContent = data.metrics.gameFps?.source || '当前电脑版本未提供帧率';
+      el('fps-source').title = el('fps-source').textContent;
+      const low = data.metrics.gameFpsLow;
+      el('fps-low-window').textContent = low && !Number.isFinite(low.value) && Number.isFinite(data.metrics.gameFps?.value) ? '统计中' : '30s';
       const value = key => Math.max(0, Math.min(100, data.metrics[key]?.value || 0));
       el('cpu-ring').style.setProperty('--value', value('cpuLoad'));
       el('gpu-ring').style.setProperty('--value', value('gpuLoad'));
       el('ram-bar').style.width = value('ramLoad') + '%'; el('vram-bar').style.width = value('vramLoad') + '%';
       if (sampleAge > 20000) staleSample();
     },
-    offline() { connected = false; document.body.classList.add('stale'); el('status').className = 'offline'; el('status').textContent = '○  电脑连接已中断'; el('freshness').textContent = '数据已过期'; },
+    offline() { clearFrames(); el('fps-source').textContent = '电脑已断开'; connected = false; document.body.classList.add('stale'); el('status').className = 'offline'; el('status').textContent = '○  电脑连接已中断'; el('freshness').textContent = '数据已过期'; },
     pause(value) { paused = value; if (!value) tick(); },
     battery(level, charging) { el('phone').textContent = `PHONE ${level}%${charging ? ' ⚡' : ''}`; }
   };

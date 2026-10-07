@@ -9,6 +9,7 @@ public sealed class SettingsForm : BorderlessForm
     private bool themeEdited, refreshingTheme;
     private readonly NumericUpDown port = Number(1024, 65535), sample = Number(1, 10), sleepingSample = Number(5, 60);
     private readonly CheckBox collector = new() { Text = "复用已安装的后台采集服务", AutoSize = true }, startup = new() { Text = "登录 Windows 后启动", AutoSize = true }, minimized = new() { Text = "启动时只显示托盘图标", AutoSize = true },
+        gameFps = new() { Text = "手机显示全屏游戏 FPS", AutoSize = true },
         revoke = new() { Text = "撤销所有手机配对，保存后需重新配对", AutoSize = true };
     private readonly Label message = UiTheme.Label("", 9, UiTheme.Muted), pairing = UiTheme.Label("尚未开启配对", 19, UiTheme.Blue, true);
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 1000 };
@@ -85,6 +86,8 @@ public sealed class SettingsForm : BorderlessForm
         Section(hardware, "硬件数据");
         Hint(hardware, "在主界面点击“授权完整读取（UAC）”，即可尝试读取 CPU 温度、功耗与主板风扇。本次运行只需授权一次，完整退出曜屏后结束。");
         sample.Value = s.SampleSeconds; sleepingSample.Value = s.SleepSampleSeconds; Row(hardware, "亮屏采样 · 秒", sample); Row(hardware, "息屏采样 · 秒", sleepingSample);
+        gameFps.Checked = s.EnableGameFps; Row(hardware, "游戏帧率", gameFps);
+        Hint(hardware, "授权后自动跟随前台全屏或无边框全屏程序，无需游戏名单或额外安装。仅手机在线且亮屏时采集。FPS 统计系统显示事件，含可追踪的生成帧；暂不支持时显示 —。帧率本身不需要 PawnIO 驱动。");
         fan.DropDownStyle = ComboBoxStyle.DropDownList; fan.Items.Add(new FanOption("", "自动识别（部分主板为暂定）"));
         foreach (var f in controller.Readings.Where(x => x.Type == "Fan" && !x.Kind.StartsWith("Gpu"))) {
             string hint = f.Id == "/lpc/it8689e/0/fan/0" && controller.Current.Warning?.Contains("CPU_FAN 暂按") == true ? " · 推定 CPU_FAN" : "";
@@ -118,7 +121,7 @@ public sealed class SettingsForm : BorderlessForm
         save.Click += async (_, _) => {
             var next = s.Copy(); next.ListenAddress = address.Text; next.Port = (int)port.Value; next.SampleSeconds = (int)sample.Value; next.SleepSampleSeconds = (int)sleepingSample.Value; next.CpuFanId = (fan.SelectedItem as FanOption)?.Id ?? "";
             if (revoke.Checked) next.Token = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
-            next.UseCollectorService = collector.Checked; next.StartWithWindows = startup.Checked; next.StartMinimized = minimized.Checked; save.Enabled = false;
+            next.UseCollectorService = collector.Checked; next.EnableGameFps = gameFps.Checked; next.StartWithWindows = startup.Checked; next.StartMinimized = minimized.Checked; save.Enabled = false;
             try { await controller.ApplySettings(next, themeEdited ? ((PanelThemeOption)panelTheme.SelectedItem!).Id : null); DialogResult = DialogResult.OK; Close(); }
             catch (Exception ex) { message.Text = "保存失败：" + ex.Message; save.Enabled = true; }
         };

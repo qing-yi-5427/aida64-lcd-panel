@@ -1,5 +1,5 @@
 /* Shared low-cost network strip: decimal bytes/s, no charts or added timers. */
-body{--footer-height:148px}
+body{--footer-height:144px}
 body.landscape{--footer-height:100px}
 body[data-theme] footer,body[data-theme].compact footer,body[data-theme].landscape footer{height:var(--footer-height);min-height:var(--footer-height);display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) 32px;gap:10px;align-items:stretch;padding:0;font-size:26px;border:0}
 body[data-theme] .net-strip{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:32px;border-top:2px solid var(--line);padding-top:14px;align-items:center;min-width:0}
@@ -9,7 +9,9 @@ body[data-theme] .net-cell .reading{display:flex;align-items:baseline;justify-co
 body[data-theme] .net-cell .reading strong{font-size:62px;line-height:1.12;letter-spacing:-1px;font-weight:500;flex:0 0 auto;color:var(--text)}
 body[data-theme] .net-cell .reading small{font-size:27px;line-height:1.12;letter-spacing:0;color:var(--muted)}
 body[data-theme] .footer-status{display:flex;align-items:center;justify-content:space-between;gap:24px;min-width:0;font-size:26px;line-height:1.2;color:var(--muted)}
-body[data-theme].landscape footer{grid-template-rows:minmax(0,1fr) 26px;gap:6px}
+body[data-theme].landscape footer{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) 26px;gap:6px 32px}
+body[data-theme].landscape .net-strip{grid-column:1;grid-row:1}
+body[data-theme].landscape .footer-status{grid-column:1;grid-row:2}
 body[data-theme].landscape .net-strip{padding-top:6px;gap:48px}
 body[data-theme].landscape .net-cell{gap:18px}
 body[data-theme].landscape .net-label{font-size:24px}
@@ -17,3 +19,77 @@ body[data-theme].landscape .net-cell .reading strong{font-size:44px}
 body[data-theme].landscape .net-cell .reading small{font-size:22px}
 body[data-theme].landscape .footer-status{font-size:23px}
 body[data-theme].stale .net-cell .reading strong{color:var(--muted)}
+
+/* A secondary reading beside the clock area; retain each theme's hardware layout. */
+body[data-theme] .fps-strip{display:flex;align-items:center;justify-content:space-between;gap:24px;min-width:0;height:144px;margin-top:24px;border:0;padding:24px 28px;border-radius:var(--radius);background:var(--fps-surface,var(--surface));color:var(--text)}
+body[data-theme] .fps-value{display:flex;align-items:baseline;gap:20px;flex-shrink:0}
+body[data-theme] .fps-value .reading{display:flex;align-items:baseline;justify-content:flex-start;gap:8px;margin:0;width:auto;height:auto;min-height:0}
+body[data-theme] .fps-value strong{font-size:76px;font-weight:600;line-height:1.05;letter-spacing:-1px;font-variant-numeric:tabular-nums;color:var(--text)}
+body[data-theme] .fps-value small{font-size:27px;color:var(--muted);line-height:1.12}
+body[data-theme] #fps-source{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:24px;font-weight:400;letter-spacing:0;color:var(--muted);text-align:right}
+body[data-theme].stale .fps-value strong{color:var(--muted)}
+/* Reserve the padded FPS card in fixed clock rows; retain hardware grid areas. */
+body[data-theme="studio"]:not(.landscape) #panel{grid-template-rows:44px 478px minmax(0,1.15fr) minmax(0,.85fr) 370px 278px var(--footer-height)}
+body[data-theme="studio"].compact:not(.landscape) #panel{grid-template-rows:42px 454px minmax(0,1.15fr) minmax(0,.85fr) 338px 250px var(--footer-height)}
+body[data-theme="telemetry"]:not(.landscape) #panel{grid-template-rows:46px 420px minmax(0,1fr) 206px 264px var(--footer-height)}
+body[data-theme="telemetry"].compact:not(.landscape) #panel{grid-template-rows:44px 396px minmax(0,1fr) 190px 240px var(--footer-height)}
+body[data-theme="ambient"] .fps-strip{width:100%;max-width:780px;align-self:center}
+/* Wide clock headers already have room between the brand and time. */
+body[data-theme="studio"].landscape .eyebrow,body[data-theme="telemetry"].landscape .eyebrow{order:0}
+body[data-theme="studio"].landscape .time-row,body[data-theme="telemetry"].landscape .time-row{order:2}
+body[data-theme="studio"].landscape .fps-strip,body[data-theme="telemetry"].landscape .fps-strip{order:1;flex:0 1 470px;flex-direction:column;align-items:flex-start;justify-content:center;height:auto;margin:0;padding:24px 28px;border:0;gap:8px}
+body[data-theme="studio"].landscape #fps-source,body[data-theme="telemetry"].landscape #fps-source{max-width:100%;text-align:left;font-size:22px}
+body[data-theme="editorial"].landscape .fps-strip{flex-direction:column;align-items:flex-start;justify-content:center;height:180px;flex-shrink:0;gap:12px}
+body[data-theme="editorial"].landscape #fps-source{max-width:100%;text-align:left;font-size:22px}
+body[data-theme="ambient"].landscape .fps-strip{flex-shrink:0}
+
+/* Reuse established theme surfaces and geometry, without adding palette colors. */
+body[data-theme="classic"]{--fps-surface:var(--surface)}
+body[data-theme="material"]{--fps-surface:var(--surface)}
+body[data-theme="winui"]{--fps-surface:var(--surface)}
+body[data-theme="flutter"]{--fps-surface:#eae2f7}
+body[data-theme="glass"]{--fps-surface:#ffffff16}
+body[data-theme="editorial"]{--fps-surface:var(--track)}
+body[data-theme="ambient"]{--fps-surface:var(--surface)}
+body[data-theme="telemetry"]{--fps-surface:var(--surface)}
+body[data-theme="studio"]{--fps-surface:#d7dfc0}
+body[data-theme="studio"] .fps-strip{border-radius:32px}
+body[data-theme="classic"] .fps-strip,body[data-theme="winui"] .fps-strip,body[data-theme="glass"] .fps-strip,body[data-theme="telemetry"] .fps-strip{box-shadow:inset 0 0 0 2px var(--line)}
+/* The compact landscape telemetry header uses its own smaller secondary reading. */
+body[data-theme="telemetry"].landscape .fps-strip{padding:12px 28px}
+body[data-theme="telemetry"].landscape .fps-value strong{font-size:64px}
+
+/* Frame pacing stays inside the existing surface, below the primary FPS hierarchy. */
+body[data-theme] .fps-strip{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);grid-template-rows:minmax(0,1fr) 24px;gap:4px 28px;padding:16px 28px}
+body[data-theme] .fps-value{grid-column:1;grid-row:1/3;flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;min-width:0}
+body[data-theme] .fps-value .net-label{font-size:24px}
+body[data-theme] .fps-details{grid-column:2;grid-row:1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;min-width:0}
+body[data-theme] .fps-detail{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0}
+body[data-theme] .fps-detail-label{font-size:24px;line-height:1.2;color:var(--muted);white-space:nowrap;font-weight:500;letter-spacing:0}
+body[data-theme] #fps-low-window{font-size:18px;font-style:normal;font-weight:400;margin-left:6px}
+body[data-theme] .fps-detail .reading{display:flex;align-items:baseline;justify-content:flex-start;gap:8px;margin:0;width:auto;height:auto;min-height:0}
+body[data-theme] .fps-detail strong{font-size:44px;line-height:1.1;font-weight:500;letter-spacing:-.5px;font-variant-numeric:tabular-nums;color:var(--text)}
+body[data-theme] .fps-detail small{font-size:22px;line-height:1.1;color:var(--muted)}
+body[data-theme] #fps-source{grid-column:2;grid-row:2;text-align:left;font-size:20px;line-height:24px;max-width:100%;align-self:end}
+body[data-theme].stale .fps-detail strong{color:var(--muted)}
+/* Short, wide clock headers use two compact auxiliary rows. */
+body[data-theme="studio"].landscape .fps-strip,body[data-theme="telemetry"].landscape .fps-strip{flex:0 1 540px;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);height:132px;gap:2px 18px;padding:12px 22px}
+body[data-theme="studio"].landscape .fps-value strong,body[data-theme="telemetry"].landscape .fps-value strong{font-size:64px}
+body[data-theme="studio"].landscape .fps-value small,body[data-theme="telemetry"].landscape .fps-value small{font-size:22px}
+body[data-theme="studio"].landscape .fps-details,body[data-theme="telemetry"].landscape .fps-details{grid-template-columns:minmax(0,1fr);gap:4px}
+body[data-theme="studio"].landscape .fps-detail,body[data-theme="telemetry"].landscape .fps-detail{flex-direction:row;align-items:baseline;justify-content:space-between;gap:10px}
+body[data-theme="studio"].landscape .fps-detail-label,body[data-theme="telemetry"].landscape .fps-detail-label{font-size:20px}
+body[data-theme="studio"].landscape .fps-detail strong,body[data-theme="telemetry"].landscape .fps-detail strong{font-size:34px}
+body[data-theme="studio"].landscape .fps-detail small,body[data-theme="telemetry"].landscape .fps-detail small{font-size:18px}
+body[data-theme="studio"].landscape #fps-low-window,body[data-theme="telemetry"].landscape #fps-low-window{display:none}
+body[data-theme="studio"].landscape #fps-source,body[data-theme="telemetry"].landscape #fps-source{font-size:18px}
+/* The editorial sidebar is narrow: one primary row above paired small readings. */
+body[data-theme="editorial"].landscape .fps-strip{height:204px;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto 24px;gap:6px;padding:16px 22px}
+body[data-theme="editorial"].landscape .fps-value{grid-column:1;grid-row:1;flex-direction:row;align-items:baseline;justify-content:flex-start;gap:16px}
+body[data-theme="editorial"].landscape .fps-value strong{font-size:64px}
+body[data-theme="editorial"].landscape .fps-value small{font-size:24px}
+body[data-theme="editorial"].landscape .fps-details{grid-column:1;grid-row:2;gap:18px}
+body[data-theme="editorial"].landscape .fps-detail strong{font-size:34px}
+body[data-theme="editorial"].landscape .fps-detail small{font-size:18px}
+body[data-theme="editorial"].landscape .fps-detail-label{font-size:22px}
+body[data-theme="editorial"].landscape #fps-source{grid-column:1;grid-row:3;font-size:18px}

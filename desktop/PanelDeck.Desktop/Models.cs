@@ -42,6 +42,7 @@ public sealed class Settings
     public bool StartMinimized { get; set; } = true;
     public bool StartWithWindows { get; set; }
     public bool UseCollectorService { get; set; } = true;
+    public bool EnableGameFps { get; set; } = true;
     public int SampleSeconds { get; set; } = 2;
     public int SleepSampleSeconds { get; set; } = 15;
     public string CpuFanId { get; set; } = "";

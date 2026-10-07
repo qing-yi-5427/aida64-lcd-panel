@@ -1,0 +1,2 @@
+# Preserve vendored bytes for the pinned upstream SHA-256 provenance manifest.
+desktop/third_party/PresentMon/** -text

@@ -1,0 +1,167 @@
+#pragma once
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <type_traits>
+#include <utility>
+
+namespace pmon::util
+{
+    template<typename T>
+    concept IsIntegralOrEnum = std::is_integral_v<std::remove_cvref_t<T>> ||
+        std::is_enum_v<std::remove_cvref_t<T>>;
+
+    template<typename T, bool IsEnum = std::is_enum_v<std::remove_cvref_t<T>>>
+    struct EnumOrIntegralUnderlyingImpl
+    {
+        using type = std::remove_cvref_t<T>;
+    };
+
+    template<typename T>
+    struct EnumOrIntegralUnderlyingImpl<T, true>
+    {
+        using type = std::underlying_type_t<std::remove_cvref_t<T>>;
+    };
+
+    template<typename T>
+    using EnumOrIntegralUnderlying = typename EnumOrIntegralUnderlyingImpl<T>::type;
+
+    // Helper: DependentFalse for static_assert in templates.
+    template<typename T>
+    struct DependentFalseT : std::false_type {};
+    template<typename T>
+    inline constexpr bool DependentFalse = DependentFalseT<T>::value;
+
+    template<typename T>
+    struct IsStdOptionalT : std::false_type {};
+    template<typename T>
+    struct IsStdOptionalT<std::optional<T>> : std::true_type {};
+    template<typename T>
+    inline constexpr bool IsStdOptional = IsStdOptionalT<std::remove_cvref_t<T>>::value;
+
+    // deconstruct member pointer into the object type the pointer works with and the member type
+    template <typename T> struct MemberPointerInfo;
+    template <typename S, typename M>
+    struct MemberPointerInfo<M S::*> {
+        using StructType = S;
+        using MemberType = M;
+    };
+    template <typename S, typename M>
+    struct MemberPointerInfo<M S::* const> {
+        using StructType = S;
+        using MemberType = M;
+    };
+    template <typename S, typename M>
+    struct MemberPointerInfo<M S::* volatile> {
+        using StructType = S;
+        using MemberType = M;
+    };
+    template <typename S, typename M>
+    struct MemberPointerInfo<M S::* const volatile> {
+        using StructType = S;
+        using MemberType = M;
+    };
+
+    template<typename S, typename M>
+    std::size_t MemberPointerOffset(M S::*memberPtr)
+    {
+        const S sample{};
+        const auto* base = reinterpret_cast<const uint8_t*>(&sample);
+        const auto* member = reinterpret_cast<const uint8_t*>(&(sample.*memberPtr));
+        return static_cast<std::size_t>(member - base);
+    }
+
+    // get the type of the elements in any iterable type (typically containers)
+    template<typename T>
+    using ContainerElementType = std::remove_reference_t<decltype(*std::begin(std::declval<T&>()))>;
+
+    // get the size of any type, even void (defined as 0 for void)
+    template<typename T>
+    constexpr std::size_t VoidableSizeof() {
+        if constexpr (std::is_void_v<T>) {
+            return 0;
+        }
+        else {
+            return sizeof(T);
+        }
+    }
+
+    // Concept to detect if a type `T` is an instantiation of a container-like template (has value_type)
+    template <typename T>
+    concept IsContainerLike = requires {
+        typename std::remove_cvref_t<T>::value_type;
+    };
+
+    // Concept to detect if a type `T` is an instantiation of std::array
+    template <typename T>
+    concept IsStdArray = std::is_same_v<std::remove_cvref_t<T>, std::array<typename std::remove_cvref_t<T>::value_type,
+        std::tuple_size_v<std::remove_cvref_t<T>>>>;
+
+    // Concept to detect if a type `T` is an instantiation of a container-like template `Template`
+    template <template <typename...> typename Template, typename T>
+    concept IsContainer = IsContainerLike<std::remove_cvref_t<T>> &&
+        std::is_same_v<std::remove_cvref_t<T>, Template<typename std::remove_cvref_t<T>::value_type>>;
+
+    // trait to deduce/extract the signature details of a function by pointer
+    namespace impl {
+        template <typename T>
+        struct FunctionPtrTraitsImpl_;
+        template <typename R, typename... Args>
+        struct FunctionPtrTraitsImpl_<R(*)(Args...)> {
+            using ReturnType = R;
+            using ParameterTypes = std::tuple<Args...>;
+            template<size_t N>
+            using ParameterType = std::tuple_element_t<N, ParameterTypes>;
+            static constexpr size_t ParameterCount = sizeof...(Args);
+        };
+    }
+    template <typename T>
+    struct FunctionPtrTraits : impl::FunctionPtrTraitsImpl_<std::remove_cvref_t<T>> {};
+
+    namespace impl {
+        template<typename Enum, std::underlying_type_t<Enum> MaxValue,
+            std::underlying_type_t<Enum> Value, typename Functor>
+        constexpr void ForEachEnumValueRecursive_(Functor& func)
+        {
+            if constexpr (Value < MaxValue) {
+                func.template operator()<static_cast<Enum>(Value)>();
+                ForEachEnumValueRecursive_<Enum, MaxValue, Value + 1>(func);
+            }
+        }
+
+        template<typename Enum, std::underlying_type_t<Enum> MaxValue,
+            std::underlying_type_t<Enum> Value, typename Functor, typename ReturnT>
+        constexpr ReturnT DispatchEnumValueRecursive_(std::underlying_type_t<Enum> target,
+            Functor& func, ReturnT&& defaultValue)
+        {
+            if constexpr (Value < MaxValue) {
+                if (target == Value) {
+                    return func.template operator()<static_cast<Enum>(Value)>();
+                }
+                return DispatchEnumValueRecursive_<Enum, MaxValue, Value + 1>(
+                    target, func, std::move(defaultValue));
+            }
+            return std::move(defaultValue);
+        }
+    }
+
+    // compile-time static to runtime dynamic TMP bridges (on enum)
+
+    template<typename Enum, std::underlying_type_t<Enum> MaxValue, typename Functor>
+    constexpr void ForEachEnumValue(Functor&& func)
+    {
+        auto& fn = func;
+        impl::ForEachEnumValueRecursive_<Enum, MaxValue, 0>(fn);
+    }
+
+    template<typename Enum, std::underlying_type_t<Enum> MaxValue, typename Functor, typename ReturnT>
+    constexpr std::remove_reference_t<ReturnT> DispatchEnumValue(Enum value, Functor&& func, ReturnT&& defaultValue)
+    {
+        using Ret = std::remove_reference_t<ReturnT>;
+        auto& fn = func;
+        Ret defaultValueCopy = std::forward<ReturnT>(defaultValue);
+        return impl::DispatchEnumValueRecursive_<Enum, MaxValue, 0>(
+            static_cast<std::underlying_type_t<Enum>>(value),
+            fn, std::move(defaultValueCopy));
+    }
+}

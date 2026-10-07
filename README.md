@@ -2,6 +2,13 @@
 
 一个 Windows 程序 + 一个 Android APK，让闲置手机成为桌面硬件监控面板。
 
+## 2.8.0 本地更新
+
+- 手机九主题加入全屏 FPS：本次 UAC 授权后，自动跟随前台独占全屏／无边框全屏程序，无需游戏名单或额外监控软件。
+- 仅手机在线且面板亮屏时读取目标进程的 Windows 呈现事件，沿用数据通道；退出全屏自动暂停。
+- 主数字使用 PresentMon 系统显示事件计算的显示 FPS，包含可追踪的生成帧，排除丢弃与重复显示；不支持或采集异常时显示 `—`，不退回提交 FPS。详见 [FPS 说明与验证](desktop/research/game-fps.md)。
+- 九主题在原 FPS 色块内加入较小的平均帧时间与 1% Low，保留时钟优先和硬件布局。帧时间使用约 2 秒窗口；1% Low 使用最近 30 秒最慢 1% 显示帧的平均耗时换算，预热期间显示统计中。复用现有显示事件，不新增 GPU 或输入跟踪。
+
 ## 2.5.1
 
 - PC 独立读取 CPU、GPU、内存、风扇和上下行网速，经局域网 HTTP/SSE 发送到手机；日常不依赖 AIDA64、HWiNFO 或 ADB。
@@ -26,16 +33,17 @@
 
 ## 构建两端
 
-需要 Windows、.NET 10 SDK、JDK 17+ 和 Android SDK。Android 本地 SDK 路径配置在忽略提交的 `local.properties` 或环境变量中。
+需要 Windows、.NET 10 SDK、JDK 17+ 和 Android SDK；原生分析库还需要 x64 MSVC C++20 与 Windows SDK，参见 [原生构建说明](desktop/PanelDeck.PresentMon/README.md)。Android 本地 SDK 路径配置在忽略提交的 `local.properties` 或环境变量中。
 
 ```powershell
+./desktop/build-presentmon.ps1
 ./desktop/build-desktop.ps1 -FrameworkDependent
 ./gradlew.bat assembleDebug
 ```
 
 PC 输出到 `artifacts/PanelDeck-Desktop-Lite/`，APK 输出到 `app/build/outputs/apk/debug/app-debug.apk`。省略 `-FrameworkDependent` 可构建附带运行时的 PC 包。源码、测试和构建脚本入库，安装包放在 Releases；构建缓存、设备数据、密钥及临时截图不入库。
 
-本次本地最新 PC 目录为 `artifacts/PanelDeck-Desktop-Update/`。`./clean-workspace.ps1` 只预览清理列表；加 `-Apply` 才删除构建缓存和旧产物，保留该目录及当前版本 APK，不清理源码或用户配置。清理前需退出 PC 程序，压缩下载包应先上传 Releases。
+本次本地最新 PC 目录为 `artifacts/PanelDeck-Desktop-2.8.0-Lite/`，手机安装包为 `artifacts/PanelDeck-Android-2.8.0.apk`。旧清理脚本仍以 `PanelDeck-Desktop-Update` 为保留目录，版本不一致时会停止；本次没有运行清理。
 
 ## 旧版 AIDA64 网页面板模式
 

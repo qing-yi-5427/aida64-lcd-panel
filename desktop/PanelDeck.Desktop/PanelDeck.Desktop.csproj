@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>PanelDeck</AssemblyName>
-    <Version>2.5.1</Version>
+    <Version>2.8.0</Version>
     <!-- Keep adaptive GC, but cap heap count instead of scaling it with PC cores. -->
     <ServerGarbageCollection>true</ServerGarbageCollection>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
@@ -14,6 +14,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="../PanelDeck.PresentMon/bin/PanelDeck.PresentMon.dll" Link="PanelDeck.PresentMon.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Compile Include="../RuntimeBootstrap/RuntimePrerequisites.cs" Link="RuntimePrerequisites.cs" />
     <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="9" />
     <RuntimeHostConfigurationOption Include="System.GC.HeapCount" Value="1" />
@@ -23,4 +24,7 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />
     <Content Include="../../panel/*" Link="panel/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <Target Name="CheckPresentMonBridge" BeforeTargets="PrepareForBuild">
+    <Error Condition="!Exists('../PanelDeck.PresentMon/bin/PanelDeck.PresentMon.dll')" Text="Build the in-process capture library first: desktop/build-presentmon.ps1 (see desktop/PanelDeck.PresentMon/README.md)." />
+  </Target>
 </Project>

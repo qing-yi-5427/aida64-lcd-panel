@@ -34,3 +34,17 @@ The GPU is the main dark block; GPU and CPU power are separate stacked tiles bes
 Isolated headless Edge rendered both themes at 1200×2200, 1200×2608, 1200×3200, 2000×1040, 2000×1300, 2000×1700, 393×852 and 1600×900. Inputs included 100%, 9999 RPM, 6000 MHz, 999.9 W, 99.9 GB and long CPU/GPU model names. Checks covered viewport clipping, clipped ancestors, label/reading overlap and value/unit spacing. Screenshots were visually inspected; the root task runs the full nine-theme regression and missing/stale-state tests.
 
 Local screenshots: `artifacts/theme-agent/telemetry-393-852.png`, `artifacts/theme-agent/studio-393-852.png`, `artifacts/theme-agent/telemetry-2000-1040.png`, `artifacts/theme-agent/studio-2000-1040.png`.
+
+
+## 2026-10-07 FPS 层级小幅调整
+
+按用户反馈保留原布局，撤回统一卡片方案。再次核对 awesome-design-md 的 NVIDIA 分析，采用既有组件语言、克制强调色、一次只调整一个组件的原则，不照搬品牌配色或卡片几何。九主题时钟字号不变，FPS 从页脚移到时钟附近，76px 数字配27px单位，沿用主题分隔线与正文色。拼贴保持 GPU 大块、两个功耗色块、CPU 横条和不对称内存区；竖屏仅把原页脚96px空间移到标题区，横屏放入标题与时钟之间的空位。硬件主题样式文件保持原样，无新增定时器、动画或远程资源。
+
+参考：https://github.com/VoltAgent/awesome-design-md/blob/main/design-md/nvidia/DESIGN.md （社区设计分析，不是 NVIDIA 官方规范）。
+
+按追加反馈给 FPS 增加各主题协调的静态色块：拼贴为柔和浅绿，纸页为灰绿，暗色主题为低亮度深色；不增加块高度或改动时钟、硬件区域。
+
+
+### 色块留白复核
+
+真机复核确认第一版80px色块配76px字号、上下内边距为0，虽未溢出但比例过薄，不能把布局自动检查通过等同于视觉质量。现改为竖屏144px高、上下24px内边距、左右28px、时钟下方24px间距；数字保持76px。拼贴复用原VRAM色块的 #d7dfc0 与原卡片32px圆角，其他主题沿用现有表面色和几何。遥测横屏受原标题高度限制，使用64px次级读数与12px上下留白。保留所有主题硬件区域的原有组织方式，竖屏为色块多预留72px。以上尺寸是项目适配选择，不是 Awesome Design 规定的统一数值。

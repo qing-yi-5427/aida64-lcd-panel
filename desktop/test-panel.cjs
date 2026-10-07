@@ -4,8 +4,11 @@ const node = id => { if (!nodes.has(id)) nodes.set(id, {style: {setProperty() {}
 let now = 1000, tick;
 const rateNode = node('net-download');
 rateNode.dataset = {key:'netDownload',format:'rate',unit:'download-unit'};
+const fpsNode = node('game-fps'); fpsNode.dataset = {key:'gameFps'};
+const frameTime = node('game-frame-time'); frameTime.dataset = {key:'gameFrameTime',decimals:'1'};
+const lowFps = node('game-fps-low'); lowFps.dataset = {key:'gameFpsLow'};
 const context = {
-  document: {getElementById: node, querySelectorAll: () => [rateNode], body: node('body')},
+  document: {getElementById: node, querySelectorAll: () => [rateNode,fpsNode,frameTime,lowFps], body: node('body')},
   window: {}, performance: {now: () => now}, Date, innerWidth: 1200, innerHeight: 2608,
   addEventListener() {}, setInterval(callback) { tick = callback; }, location: {protocol: 'file:'}
 };
@@ -42,3 +45,28 @@ for (const [value,text,unit] of [[0,'0','B/s'],[850,'850','B/s'],[24600000,'24.6
   assert.equal(rateNode.textContent,text); assert.equal(node('download-unit').textContent,unit);
 }
 console.log('PASS: panel connection/stale/recovery and network rate units, zero/missing/invalid values (27 checks)');
+
+context.window.PanelDeck.update({...data,metrics:{gameFps:{value:144.2,source:'test-game · 提交 FPS'}}});
+assert.equal(fpsNode.textContent,'144'); assert.equal(node('fps-source').textContent,'test-game · 提交 FPS');
+context.window.PanelDeck.offline(); assert.equal(fpsNode.textContent,'—');
+context.window.PanelDeck.update({...data,metrics:{gameFps:{value:null,source:'等待全屏游戏'}}});
+assert.equal(fpsNode.textContent,'—'); assert.equal(node('fps-source').textContent,'等待全屏游戏');
+context.window.PanelDeck.update(data); assert.equal(fpsNode.textContent,'—');
+assert.equal(node('fps-source').textContent,'当前电脑版本未提供帧率');
+context.window.PanelDeck.update({...data,sampleAgeMs:30000,metrics:{gameFps:{value:144}}});
+assert.equal(fpsNode.textContent,'—');
+console.log('PASS: FPS live, missing, offline, stale and old-PC compatibility');
+const pacing = {...data,metrics:{gameFps:{value:144},gameFrameTime:{value:6.944},gameFpsLow:{value:98.7}}};
+context.window.PanelDeck.update(pacing);
+assert.equal(frameTime.textContent,'6.9'); assert.equal(lowFps.textContent,'99');
+assert.equal(node('fps-low-window').textContent,'30s');
+context.window.PanelDeck.update({...pacing,metrics:{...pacing.metrics,gameFpsLow:{value:null}}});
+assert.equal(lowFps.textContent,'—'); assert.equal(node('fps-low-window').textContent,'统计中');
+context.window.PanelDeck.offline();
+assert.equal(frameTime.textContent,'—'); assert.equal(lowFps.textContent,'—');
+context.window.PanelDeck.update({...pacing,sampleAgeMs:30000});
+assert.equal(frameTime.textContent,'—'); assert.equal(lowFps.textContent,'—');
+context.window.PanelDeck.update({...data,metrics:{gameFps:{value:60}}});
+assert.equal(frameTime.textContent,'—'); assert.equal(lowFps.textContent,'—');
+assert.equal(node('fps-low-window').textContent,'30s');
+console.log('PASS: frame pacing, warmup, expiry, disconnect and older PC compatibility');
